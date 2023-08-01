@@ -20,12 +20,13 @@ class Dotty:
         """Create a new instance, either empty or around existing data."""
 
         if data is None:
-            data = {}
+            data = dict()
 
         if not isinstance(data, Mapping):
             raise ValueError("data has to be a dict(like) object")
 
         self._data = data
+        del data
 
     def __str__(self):
         return str(self._data)
@@ -40,6 +41,7 @@ class Dotty:
         item = self._data
         for k in self._split(key):
             item = item[k]
+            del k
 
         return item
 

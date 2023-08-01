@@ -28,10 +28,10 @@ class Quotes:
     
     def update(self, char: chr):
         """Update after fetching a char."""
-        if char == '\'':
+        if char == "'":
             self.single = not self.single
         
-        elif char == "\"":
+        elif char == '"':
             self.double = not self.double
 
 
@@ -122,7 +122,7 @@ class TOMLParser:
     def parse_string(self, value: str) -> tuple[bool, str]:
         """Check if a value starts and ends with same quote mark, and only has 2 of them."""
 
-        if value[0] in {"\"", '\''}:
+        if value[0] in ['"', "'"]:
             if value.count(value[0]) != 2 or value[0] != value[-1]:
                 TOMLError(f"Malformed string: {value}")
 
@@ -134,9 +134,11 @@ class TOMLParser:
         _value = value.strip().lower()
 
         if _value == "true":
+            del _value
             return True, True
 
         if _value == "false":
+            del _value
             return True, False
 
         return False, value
@@ -163,6 +165,7 @@ class TOMLParser:
         for type_ in ["string", "bool", "int", "list", ]:
             parsed, value = getattr(self, f"parse_{type_}")(value)
             if parsed:
+                del parsed
                 return value
 
         print(f"Couldn't parse: {value}")
@@ -176,9 +179,11 @@ class TOMLParser:
             
             if self.is_empty(line):
                 self._scope = ""
+                del line
                 continue
 
             if self.scope(line):
+                del line
                 continue
 
             key, value = self.parse_assignment(line)
@@ -186,5 +191,5 @@ class TOMLParser:
             value = self.parse_value(value)
             key = f"{self._scope}.{key}" if self._scope else key
             data[key] = value
-
+            del line, key, value
         return data
