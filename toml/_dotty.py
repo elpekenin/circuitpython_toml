@@ -1,12 +1,8 @@
 # inspired by https://github.com/pawelzny/dotty_dict/tree/master
 
 try:
-    from collections import Mapping
-except ImportError:
-    Mapping = dict
-
-try:
-    from typing import Any
+    # types are needed on compyter
+    from typing import Any, Optional
 except ImportError:
     pass
 
@@ -14,59 +10,131 @@ except ImportError:
 class Dotty:
     """Minimal wrapper around a dict, adding support for `key.key` indexing."""
 
-    SEPARATOR = "."
+    tables: set[str]
+    """Stores the tables on this DottyDict."""
 
-    def __init__(self, data: dict | None = None):
+    _BASE_DICT: str = "__base__"
+    """Special id to return the base dict."""
+
+    def __init__(
+        self,
+        __data: Optional[dict] = None,
+        *,
+        fill_tables: bool = False
+    ):
         """Create a new instance, either empty or around existing data."""
 
-        if data is None:
-            data = {}
+        if __data is None:
+            __data = {}
 
-        if not isinstance(data, Mapping):
-            raise ValueError("data has to be a dict(like) object")
+        if not isinstance(__data, dict):
+            raise ValueError("data to be wrapped has to be a dict.")
 
-        self._data = data
+        self._data = __data
+
+        # set ensures no duplications
+        # shouldnt happen anyway, due to _get_or_create's logic
+        self.tables = set()
+
+        # _BASE_DICT => items at root of the dict
+        self.tables.add(self._BASE_DICT)
+
+        if not fill_tables:
+            return
+
+        def _fill(key: str, value: Any):
+            """Helper to iterate nested dicts"""
+
+            if isinstance(value, dict):
+                self.tables.add(key)
+
+                for k, v in value.items():
+                    _fill(f"{key}.{k}", v)
+
+        for k, v in self._data.items():
+            _fill(k, v)
 
     def __str__(self):
+        """String just shows the dict inside."""
         return str(self._data)
-    
+
     def __repr__(self):
-        return f"<Dotty data={self}, separator='{self.SEPARATOR}'>"
+        """Repr shows data and tables"""
+        return f"<Dotty data={self._data}, tables={self.tables}>"
 
-    def _split(self, key: str) -> list[str]:
-        return key.split(self.SEPARATOR)
+    @staticmethod
+    def split(key: str) -> tuple[list[str], str]:
+        """Splits a key into last element and rest of them.
 
-    def __getitem__(self, key: str):
+            >>> split("foo")
+            >>> [], "foo"
+
+            >>> split("foo.bar")
+            >>> ["foo"], "bar"
+
+            >>> split("foo.bar.baz")
+            >>> ["foo", "bar"], "baz"
+        """
+
+        parts = key.split(".")
+        return parts[:-1], parts[-1]
+
+    def __getitem__(self, key: str) -> Any:
+        """Syntactic sugar to get a nested item."""
+
+        # special case, return base dict
+        if key == self._BASE_DICT:
+            return self._data
+
+        keys, last = self.split(key)
+
         item = self._data
-        for k in self._split(key):
+        for k in keys:
             item = item[k]
 
-        return item
+        return item[last]
 
-    def __getattr__(self, key):
-        # dont override some dict builtins (eg `items`)
-        if hasattr(self._data, key):
-            return getattr(self._data, key)
-        
-        value = self._data[key]
-        # wrap on a Dotty to allow: dotty_dict.key.subkey
-        if isinstance(value, Mapping):
-            value = Dotty(value)
+    def _get_or_create(self, item: dict, k: str, global_key: str) -> dict:
+        """Helper function that creates the nested dict if not present."""
 
-        return value
+        if k not in item:
+            # Add to tables             v get rid of heading dot
+            self.tables.add(global_key[1:])
 
-    def __setitem__(self, key: str, value: Any) -> Mapping:
-        def _get_or_create(item: Mapping, k: str):
-            if k not in item:
-                item[k] = {}
+            item[k] = {}
 
-            return item[k]
+        return item[k]
 
-    
-        keys = self._split(key)
+    def __setitem__(self, key: str, value: Any):
+        """Syntactic sugar to set a nested item."""
+
+        if key == self._BASE_DICT:
+            raise KeyError(f"Using '{self._BASE_DICT}' as key is not supported")
+
+        keys, last = self.split(key)
+        global_key = ""
 
         item = self._data
-        while len(keys) > 1:
-            item = _get_or_create(item, keys.pop(0))
+        for k in keys:
+            global_key += f".{k}"
+            item = self._get_or_create(item, k, global_key)
 
-        item[keys.pop()] = value
+        item[last] = value
+
+    def __getattr__(self, key: str) -> Any:
+        """Redirect some methods to dict's builtin ones. Perhaps not too useful."""
+
+        if hasattr(self._data, key):
+            return getattr(self._data, key)
+
+        raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{key}'")
+
+    def __eq__(self, __value: object) -> bool:
+        klass = self.__class__
+
+        if not isinstance(__value, klass):
+            raise ValueError(
+                f"Comparation not implemented for {klass} and {type(__value)}"
+            )
+
+        return self._data == __value._data

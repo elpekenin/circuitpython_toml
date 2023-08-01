@@ -1,190 +1,392 @@
+try:
+    # types are needed on compyter
+    from typing import Any, Optional
+except ImportError:
+    pass
+
 from ._dotty import Dotty
 
+
 class TOMLError(Exception):
-    """Errors detected while parsing, others are for sure missed."""
-
-    def __init__(self, message):
-        self.message = f"Invalid TOML: {message}"
-        super().__init__(self.message)
+    """Custom class for errors."""
+    pass
 
 
-class Quotes:
-    """Solve the question: Are we in a string?."""
-    # TODO: Support for triple quotes?
+class Tokens:
+    OPENING_BRACKET = "["
+    CLOSING_BRACKET = "]"
+    SINGLE_QUOTE = "'"
+    DOUBLE_QUOTE = "\""
+    EQUAL_SIGN = "="
+    COMMENT = "#"
 
-    single: bool
-    """Whether we are in a string delimited by '."""
+    QUOTES = {
+        SINGLE_QUOTE,
+        DOUBLE_QUOTE,
+    }
 
-    double: bool
-    '''Whether we are in a string delimited by ".'''
-
-    def __init__(self):
-        self.single = False
-        self.double = False
-
-    def __bool__(self):
-        """Returns whether we are in a string."""
-        return self.single == self.double == True
-    
-    def update(self, char: chr):
-        """Update after fetching a char."""
-        if char == '\'':
-            self.single = not self.single
-        
-        elif char == "\"":
-            self.double = not self.double
+    ALL = {
+        OPENING_BRACKET,
+        CLOSING_BRACKET,
+        SINGLE_QUOTE,
+        DOUBLE_QUOTE,
+        EQUAL_SIGN,
+    }
 
 
-def parse_helper(func):
-    """Wrapper to prevent duplication of the 'in string?' logic."""
+class LineInfo:
+    """Cleanup raw line's content and find tokens on it."""
 
-    def wrapper(self: TOMLParser, line: str):
-        quotes = Quotes() 
+    line: str
+    """Clean line (strip()'ed and comments removed)."""
 
-        for i, c in enumerate(line):
-            quotes.update(c)
+    tokens: dict
+    """Mapping from tokens to the position(s) where they are found on the line."""
 
-            # we are in a string
-            if quotes:
+    open_quote: int = -1
+    """Position of the first " or ' found, -1 if none."""
+
+    close_quote: int = -1
+    """Position of the closing " or ', -1 if none."""
+
+    assignment: int = -1
+    """Position of the equal sign, -1 if none."""
+
+    had_comment: bool = False
+    """Whether the line contained a comment."""
+
+    def __init__(self, __line: str):
+        self.line = ""
+        self.tokens = {t: [] for t in Tokens.ALL}
+
+        in_quotes = False
+        for i, char in enumerate(__line.lstrip()):
+            # upon finding a comment (not in a quoted string), quit
+            if (
+                char == Tokens.COMMENT
+                and not in_quotes
+            ):
+                # clean trailing spaces
+                self.line = self.line.rstrip()
+                self.had_comment = True
+                return
+
+            # add current char to "clean" string
+            self.line += char
+
+            # keep track of opening quote
+            if (
+                char in Tokens.QUOTES
+                and self.open_quote == -1
+            ):
+                in_quotes = True
+                self.open_quote = i
+
+            # ... and where it ends
+            if (
+                in_quotes
+                and i != self.open_quote
+                and char == __line[self.open_quote]
+            ):
+                in_quotes = False
+                self.close_quote = i
+
+            # no token data to be stored if we are in a string
+            if in_quotes:
                 continue
 
-            # functions can output whether they are finished
-            # return False, _ => keep iterating
-            # return True, out => return out
-            finished, output = func(line, c, i)
+            # metadata about tokens
+            if char in Tokens.ALL:
+                self.tokens[char].append(i)
 
-            if finished:
-                return output
+                # assignment location
+                if (
+                    char == Tokens.EQUAL_SIGN
+                    and self.assignment == -1
+                ):
+                    self.assignment = i
 
-        # fallback, return line unchange
-        return line
-
-    return wrapper
+        # clean trailing spaces
+        self.line = self.line.rstrip()
 
 
-class TOMLParser:
-    """Class for parsing a TOML file."""
+class SyntaxChecker:
+    """Some basic syntax rules based on the tokens found."""
 
-    _scope: str = ""
+    @staticmethod
+    def check(info: LineInfo) -> Optional[str]:
+        """Run some checks."""
+
+        #################
+        # String checks #
+        #################
+
+        # smallest (but not -1) index
+        quoted = info.open_quote != -1
+
+        # there can only be 2 delimiting quotes (open and close), but an arbritrary amount of the other one 
+        if quoted and info.line.count(info.line[info.open_quote]) != 2:
+            return "Malformed string, check out your quotes"
+
+        if quoted and len(info.line) > (info.close_quote + 1):
+            return "Cant have content after closing the string"
+
+        #######################
+        # Scope or assignment #
+        #######################
+        is_assignment = info.assignment != -1
+        is_scope_setter = (
+            info.line[0] == Tokens.OPENING_BRACKET
+            and info.line[-1] == Tokens.CLOSING_BRACKET
+        ) 
+
+        if not (is_assignment or is_scope_setter):
+            return (
+                "Line has to contain either "
+                "an assignment or scope setter"
+            )
+
+        if is_assignment and is_scope_setter:
+            return (
+                "Line cant be an assignment and "
+                "scope setter at the same time"
+            )
+
+        ##############
+        # Assignment #
+        ##############
+        if (
+            is_assignment and
+            not len(info.line) > (info.assignment + 1)
+        ):
+            return "Invalid assignment, nothing after equal sign"
+
+        # If we got here, everything was correct
+        # Empty string => No exception raised
+        return ""
+
+
+class Parser:
+    """Extract information from a TOML."""
+
+    data: Dotty
+    """Dotty dict where the information from the TOML is stored."""
+
+    _scope: str
     """Current scope ([scope], [another.scope]) of the parser."""
 
-    def __str__(self) -> self:
-        return f"{self.__class__.__name__}"
-    
-    def __repr__(self) -> str:
-        return f"<{self}>"
+    _ignore_exc: bool
+    """Whether TOMLError's are ignored."""
 
-    def remove_comments(self, line: str) -> str:
-        """Remove comment from a line, takes into account strings, but not triple quotation ones."""
+    def __init__(self, __text: str, *, ignore_exc: bool = True):
+        """Parse incoming TOML."""
 
-        @parse_helper
-        def remove_comments_impl(line: str, c: chr, i: int) -> str:
+        self.data = Dotty()
+        self._scope = "" 
+        self._ignore_exc = ignore_exc
 
-            if c == "#":
-                return True, line[:i].strip()
+        lines = __text.replace("\r", "").split("\n")
+        for i, line in enumerate(lines, 1):
+            # TODO: Remove comments before processing the line
+            self._parse_line(i, line)
 
-            return False, None
-
-        return remove_comments_impl(self, line)
-    
-    def parse_assignment(self, line: str) -> tuple[str, str]:
-        """Parse a key = value line, and return both of those."""
-
-        @parse_helper
-        def parse_assignment_impl(line: str, c: chr, i: int) -> str:
-
-            if c == "=":
-                key = line[:i].strip()
-                value = line[i+1:].strip()
-                return True, (key, value)
-
-            return False, (None, None)
-
-        output = parse_assignment_impl(self, line)
-        if isinstance(output, str):
-            raise TOMLError(f"This is not an assignment: '{line}'")
-
-        return output[:2]
-
-    def is_empty(self, line: str) -> bool:
-        """Returns whether the line is empty."""
-        return not line.strip()
-    
-    def scope(self, line: str) -> bool:
-        """Returns whether this line was setting up a scope."""
-        if line[0] == "[" and line[-1] == "]":
-            self._scope = line[1:-1]
-            return True
-
-        return False
-
-
-    def parse_string(self, value: str) -> tuple[bool, str]:
-        """Check if a value starts and ends with same quote mark, and only has 2 of them."""
-
-        if value[0] in {"\"", '\''}:
-            if value.count(value[0]) != 2 or value[0] != value[-1]:
-                TOMLError(f"Malformed string: {value}")
-
-            return True, value[1:-1]
-
-        return False, value
-
-    def parse_bool(self, value: str) -> tuple[bool, bool]:
-        _value = value.strip().lower()
-
-        if _value == "true":
-            return True, True
-
-        if _value == "false":
-            return True, False
-
-        return False, value
-
-    def parse_int(self, value: str) -> tuple[bool, int]:
-        if value.isdigit():
-            return True, int(value)
+    def _parse_value(self, __value: str) -> Any:
+        """
+        (Try) Convert a string into another type.
         
-        # negative
-        if value[0] == "-" and value[1:].isdigit():
-            return True, -int(value[1:])
+        >>> _parse_value("foo")
+        >>> "foo"
 
-        return False, value
-    
-    def parse_list(self, value: str) -> tuple[bool, list[Any]]:
-        if value[0] == "[" and value[-1] == "]":
-            items = value[1:-1].split(",")
-            return True, [self.parse_value(item.strip()) for item in items]
+        >>> _parse_value("3")
+        >>> 3
 
-        return False, value
+        >>> _parse_value("-42")
+        >>> -42
 
-    def parse_value(self, value: str):
-        # string has to be first, to prevent casting it to something else
-        for type_ in ["string", "bool", "int", "list", ]:
-            parsed, value = getattr(self, f"parse_{type_}")(value)
-            if parsed:
-                return value
+        >>> _parse_value("6.9")
+        >>> 6.9
 
-        print(f"Couldn't parse: {value}")
-        return value
+        >>> _parse_value("0x10")
+        >>> 16
 
-    def load(self, text: str) -> Dotty:
-        data = Dotty()
+        >>> _parse_value("true")
+        >>> True
 
-        for _line in text.replace("\r\n", "\n").splitlines():
-            line = self.remove_comments(_line)
-            
-            if self.is_empty(line):
+        >>> _parse_value("FaLse")
+        >>> False
+
+        >>> _parse_value("[3, 2]")
+        >>> [3, 2]
+
+        """
+
+        # quoted string, has to be first, to prevent casting it
+        if (
+            __value[0] in Tokens.QUOTES
+            and __value[0] == __value[-1]
+        ):
+            return __value[1:-1]
+
+        # integer
+        if __value.isdigit():
+            return int(__value)
+
+        # negative integer
+        if __value[0] == "-" and __value[1:].isdigit():
+            return -int(__value[1:])
+
+        # bin/octal/hex literal
+        if __value[0] == "0":
+            specifier = __value[1].lower()
+            base = {
+                "b": 2,
+                "o": 8,
+                "x": 16
+            }.get(specifier, 0)
+            return int(__value, base)
+        
+        # float
+        if (
+            __value.count(".") == 1
+            # if replacing a single dot with 0 yields a number, this was a float
+            and __value.replace(".", "0", 1).isdigit()
+        ):
+            return float(__value)
+
+        # negative float
+        if (
+            __value.count(".") == 1
+            and __value[0] == "-"
+            and __value[1:].replace(".", "0", 1).isdigit()
+        ):
+            return -float(__value[1:])
+
+        # bool
+        if __value.lower() in {"true", "false"}:
+            return __value.lower() == "true"
+
+        # array
+        if (
+            __value[0] == Tokens.OPENING_BRACKET
+            and __value[-1] == Tokens.CLOSING_BRACKET
+        ):
+            return [
+                self._parse_value(v.strip())
+                for v in __value[1:-1].split(",")
+            ]
+
+        # couldn't parse, return as is (str)
+        return __value
+
+    def _add_item(self, __key: str, __value: str) -> None:
+        key = f"{self._scope}.{__key}" if self._scope else __key
+        self.data[key] = self._parse_value(__value)
+
+    def _parse_line(self, __i: int, __line: str) -> None:
+        """Extract information from a line and add it to the Dotty."""
+
+        # get information about this line
+        info = LineInfo(__line)
+
+        # empty line clears scope
+        if not info.line:
+            # lines with comments dont clear scope, empty ones do
+            if not info.had_comment:
                 self._scope = ""
+            return
+        
+        message = SyntaxChecker.check(info)
+        if message and not self._ignore_exc:
+            raise TOMLError(f"{message} in line {__i}")
+        
+        # at this point, line should have content and correct syntax, this code can be rather dumb
+        # we can't strip or anything like that tho, indexes would be broken
+
+        # equal sign => assignment expresion
+        if Tokens.EQUAL_SIGN in info.line:
+            split_at = info.tokens[Tokens.EQUAL_SIGN][0]
+
+            key = info.line[:split_at].strip()
+            value = info.line[split_at+1:].strip()
+
+            self._add_item(key, value)
+
+        # no equal sign => scope assignment, ie: [scope]
+        else:
+            # remove "[" and "]"
+            scope = info.line[1:-1]
+            self._scope = scope
+
+##############
+# Public API #
+##############
+def loads(__str: str, *, ignore_exc: bool = False) -> Dotty:
+    """Parse TOML from a string."""
+    return Parser(__str, ignore_exc=ignore_exc).data
+
+
+def load(__file: "Path", *, ignore_exc: bool = False) -> Dotty:
+    """Parse TOML from a file-like."""
+    with open(__file, "r") as f:
+        return loads(f.read(), ignore_exc=ignore_exc)
+
+
+def dump(__data: Dotty | dict, __file: "Path"):
+    """Write a (dotty) dict as TOML into a file."""
+
+    if not isinstance(__data, (Dotty, dict)):
+        raise TOMLError("dumping is only implemented for dict-like objects")
+
+    # enclose on a dict, to easily find the "tables" on it
+    if isinstance(__data, dict):
+        __data = Dotty(__data, fill_tables=True)
+
+    def _order(x):
+        """Little helper to sort the tables."""
+        return (
+            # len cant be -1 on a string, this ensures root elements being first
+            -1 if x == __data._BASE_DICT
+            else len(x)
+        )
+
+    with open(__file, "w") as f:
+        for table_name in sorted(__data.tables, key=_order):
+            table = __data[table_name]
+
+            # special case for tables without direct childs (ie: only nested ones)
+            # skip them
+            if all(map(lambda x: isinstance(x, dict), table.values())):
                 continue
 
-            if self.scope(line):
-                continue
+            # special case for items at root of the dict
+            if table_name != __data._BASE_DICT:
+                f.write(f"[{table_name}]\n")
 
-            key, value = self.parse_assignment(line)
-            # convert to number, bool, etc
-            value = self.parse_value(value)
-            key = f"{self._scope}.{key}" if self._scope else key
-            data[key] = value
+            for key, value in table.items():
+                # will be handled by another iteration
+                if isinstance(value, dict):
+                    continue
 
-        return data
+                # enclose string in quotes to prevent casting it when reading
+                # actually, TOML enforces the use of quotes, while this lib does not
+                if isinstance(value, str):
+                    value = f"\"{value}\""
+
+                f.write(f"{key}={value}\n")
+
+            # empty line to reset scope + readability
+            f.write("\n")
+
+
+def dumps(__str: str, __file: "Path"):
+    # parse it into a dict, and dump it
+    dump(loads(__str), __file)
+
+
+__all__ = [
+    "TOMLError",
+    "loads",
+    "load",
+    "dumps",
+    "dump",
+]
