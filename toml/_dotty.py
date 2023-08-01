@@ -20,7 +20,7 @@ class Dotty:
         """Create a new instance, either empty or around existing data."""
 
         if data is None:
-            data = dict()
+            data = {}
 
         if not isinstance(data, Mapping):
             raise ValueError("data has to be a dict(like) object")
