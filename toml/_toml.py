@@ -4,6 +4,7 @@ try:
 except ImportError:
     pass
 
+from io import StringIO
 from ._dotty import Dotty
 
 
@@ -19,6 +20,7 @@ class Tokens:
     DOUBLE_QUOTE = "\""
     EQUAL_SIGN = "="
     COMMENT = "#"
+    COMMA = ","
 
     QUOTES = {
         SINGLE_QUOTE,
@@ -28,9 +30,9 @@ class Tokens:
     ALL = {
         OPENING_BRACKET,
         CLOSING_BRACKET,
-        SINGLE_QUOTE,
-        DOUBLE_QUOTE,
+        *QUOTES,
         EQUAL_SIGN,
+        COMMA,
     }
 
 
@@ -128,9 +130,6 @@ class SyntaxChecker:
         if quoted and info.line.count(info.line[info.open_quote]) != 2:
             return "Malformed string, check out your quotes"
 
-        if quoted and len(info.line) > (info.close_quote + 1):
-            return "Cant have content after closing the string"
-
         #######################
         # Scope or assignment #
         #######################
@@ -190,34 +189,11 @@ class Parser:
             # TODO: Remove comments before processing the line
             self._parse_line(i, line)
 
-    def _parse_value(self, __value: str) -> Any:
+    def _parse_value(self, __value: str, __line_info: Optional[LineInfo] = None) -> Any:
         """
-        (Try) Convert a string into another type.
+        (Try) Convert a string into a value.
         
-        >>> _parse_value("foo")
-        >>> "foo"
-
-        >>> _parse_value("3")
-        >>> 3
-
-        >>> _parse_value("-42")
-        >>> -42
-
-        >>> _parse_value("6.9")
-        >>> 6.9
-
-        >>> _parse_value("0x10")
-        >>> 16
-
-        >>> _parse_value("true")
-        >>> True
-
-        >>> _parse_value("FaLse")
-        >>> False
-
-        >>> _parse_value("[3, 2]")
-        >>> [3, 2]
-
+        Note: __line_info is only used when parsing lists
         """
 
         # quoted string, has to be first, to prevent casting it
@@ -262,7 +238,7 @@ class Parser:
             return -float(__value[1:])
 
         # bool
-        if __value.lower() in {"true", "false"}:
+        if __value in {"true", "false"}:
             return __value.lower() == "true"
 
         # array
@@ -270,17 +246,65 @@ class Parser:
             __value[0] == Tokens.OPENING_BRACKET
             and __value[-1] == Tokens.CLOSING_BRACKET
         ):
-            return [
-                self._parse_value(v.strip())
-                for v in __value[1:-1].split(",")
-            ]
+            opening = __line_info.tokens[Tokens.OPENING_BRACKET]
+            closing = __line_info.tokens[Tokens.CLOSING_BRACKET]
 
-        # couldn't parse, return as is (str)
-        return __value
+            if len(opening) != len(closing):
+                raise TOMLError("Mismatched brackets.")
 
-    def _add_item(self, __key: str, __value: str) -> None:
-        key = f"{self._scope}.{__key}" if self._scope else __key
-        self.data[key] = self._parse_value(__value)
+            value, _ = self._parse_list(__line_info.line, opening[0])
+            return value
+
+        # couldn't parse, raise Exception
+        raise TOMLError(f"Couldn't parse value: `{__value}` (Hint, remember to wrap strings in quotes)")
+
+    def _parse_assignment(self, __line_info: LineInfo) -> None:
+        split_at = __line_info.tokens[Tokens.EQUAL_SIGN][0]
+        _key = __line_info.line[:split_at].strip()
+        _value = __line_info.line[split_at+1:].strip()
+
+        key = f"{self._scope}.{_key}" if self._scope else _key
+        self.data[key] = self._parse_value(_value, __line_info)
+
+    def _parse_list(self, __line: str, __start: int) -> tuple[list[Any], int]:
+        """
+        Helper to parse a list.
+        Returns parsed list + where next element starts
+        """
+
+        pos = __start
+        text = ""
+        elements = []
+        while pos < len(__line):
+            char = __line[pos]
+
+            # early stop when current list ends
+            if char == Tokens.CLOSING_BRACKET:
+                if text:
+                    elements.append(self._parse_value(text.strip()))
+                return elements if elements else None, pos + 1
+
+            # parse list and update current position
+            if char == Tokens.OPENING_BRACKET:
+                text = ""
+                value, pos = self._parse_list(__line, pos + 1)
+                if value is not None:
+                    elements.append(value)
+
+            # parse the element we have collected so far
+            if char == Tokens.COMMA:
+                if text:
+                    elements.append(self._parse_value(text.strip()))
+                text = ""
+
+            # collect another char
+            else:
+                text += char
+
+            pos += 1
+
+        # how do we get here?
+        return elements, pos
 
     def _parse_line(self, __i: int, __line: str) -> None:
         """Extract information from a line and add it to the Dotty."""
@@ -304,12 +328,7 @@ class Parser:
 
         # equal sign => assignment expresion
         if Tokens.EQUAL_SIGN in info.line:
-            split_at = info.tokens[Tokens.EQUAL_SIGN][0]
-
-            key = info.line[:split_at].strip()
-            value = info.line[split_at+1:].strip()
-
-            self._add_item(key, value)
+            self._parse_assignment(info)
 
         # no equal sign => scope assignment, ie: [scope]
         else:
@@ -331,8 +350,8 @@ def load(__file: "Path", *, ignore_exc: bool = False) -> Dotty:
         return loads(f.read(), ignore_exc=ignore_exc)
 
 
-def dump(__data: Dotty | dict, __file: "Path"):
-    """Write a (dotty) dict as TOML into a file."""
+def dumps(__data: Dotty | dict) -> str:
+    """Write a (dotty) dict as TOML into a string."""
 
     if not isinstance(__data, (Dotty, dict)):
         raise TOMLError("dumping is only implemented for dict-like objects")
@@ -349,38 +368,41 @@ def dump(__data: Dotty | dict, __file: "Path"):
             else len(x)
         )
 
-    with open(__file, "w") as f:
-        for table_name in sorted(__data.tables, key=_order):
-            table = __data[table_name]
+    out = StringIO()
+    for table_name in sorted(__data.tables, key=_order):
+        table = __data[table_name]
 
-            # special case for tables without direct childs (ie: only nested ones)
-            # skip them
-            if all(map(lambda x: isinstance(x, dict), table.values())):
+        # special case for tables without direct childs (ie: only nested ones)
+        # skip them
+        if all(map(lambda x: isinstance(x, dict), table.values())):
+            continue
+
+        # special case for items at root of the dict
+        if table_name != __data._BASE_DICT:
+            out.write(f"[{table_name}]\n")
+
+        for key, value in table.items():
+            # will be handled by another iteration
+            if isinstance(value, dict):
                 continue
 
-            # special case for items at root of the dict
-            if table_name != __data._BASE_DICT:
-                f.write(f"[{table_name}]\n")
+            # enclose string in quotes to prevent casting it when reading
+            # actually, TOML enforces the use of quotes, while this lib does not
+            if isinstance(value, str):
+                value = f"\"{value}\""
 
-            for key, value in table.items():
-                # will be handled by another iteration
-                if isinstance(value, dict):
-                    continue
+            out.write(f"{key}={value}\n")
 
-                # enclose string in quotes to prevent casting it when reading
-                # actually, TOML enforces the use of quotes, while this lib does not
-                if isinstance(value, str):
-                    value = f"\"{value}\""
+        # empty line to reset scope + readability
+        out.write("\n")
 
-                f.write(f"{key}={value}\n")
-
-            # empty line to reset scope + readability
-            f.write("\n")
+    return out.getvalue()
 
 
-def dumps(__str: str, __file: "Path"):
-    # parse it into a dict, and dump it
-    dump(loads(__str), __file)
+def dump(__data: Dotty | dict, __file: "Path"):
+    """Write a (dotty) dict as TOML into a file."""
+    with open(__file, "w") as f:
+        f.write(dumps(__data))
 
 
 __all__ = [
