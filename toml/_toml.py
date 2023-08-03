@@ -252,7 +252,7 @@ class Parser:
             if len(opening) != len(closing):
                 raise TOMLError("Mismatched brackets.")
 
-            value, _ = self._parse_list(__line_info.line, opening[0])
+            value, _ = self._parse_list(__line_info.line, opening[0] + 1)
             return value
 
         # couldn't parse, raise Exception
@@ -277,22 +277,23 @@ class Parser:
         elements = []
         while pos < len(__line):
             char = __line[pos]
+            pos += 1
 
             # early stop when current list ends
             if char == Tokens.CLOSING_BRACKET:
                 if text:
                     elements.append(self._parse_value(text.strip()))
-                return elements if elements else None, pos + 1
+                return elements, pos
 
             # parse list and update current position
-            if char == Tokens.OPENING_BRACKET:
+            elif char == Tokens.OPENING_BRACKET:
                 text = ""
-                value, pos = self._parse_list(__line, pos + 1)
+                value, pos = self._parse_list(__line, pos)
                 if value is not None:
                     elements.append(value)
 
             # parse the element we have collected so far
-            if char == Tokens.COMMA:
+            elif char == Tokens.COMMA:
                 if text:
                     elements.append(self._parse_value(text.strip()))
                 text = ""
@@ -300,8 +301,6 @@ class Parser:
             # collect another char
             else:
                 text += char
-
-            pos += 1
 
         # how do we get here?
         return elements, pos
