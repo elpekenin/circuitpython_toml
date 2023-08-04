@@ -10,6 +10,7 @@ from ._dotty import Dotty
 
 class TOMLError(Exception):
     """Custom class for errors."""
+
     pass
 
 
@@ -17,7 +18,7 @@ class Tokens:
     OPENING_BRACKET = "["
     CLOSING_BRACKET = "]"
     SINGLE_QUOTE = "'"
-    DOUBLE_QUOTE = "\""
+    DOUBLE_QUOTE = '"'
     EQUAL_SIGN = "="
     COMMENT = "#"
     COMMA = ","
@@ -64,10 +65,7 @@ class LineInfo:
         in_quotes = False
         for i, char in enumerate(__line.lstrip()):
             # upon finding a comment (not in a quoted string), quit
-            if (
-                char == Tokens.COMMENT
-                and not in_quotes
-            ):
+            if char == Tokens.COMMENT and not in_quotes:
                 # clean trailing spaces
                 self.line = self.line.rstrip()
                 self.had_comment = True
@@ -77,19 +75,12 @@ class LineInfo:
             self.line += char
 
             # keep track of opening quote
-            if (
-                char in Tokens.QUOTES
-                and self.open_quote == -1
-            ):
+            if char in Tokens.QUOTES and self.open_quote == -1:
                 in_quotes = True
                 self.open_quote = i
 
             # ... and where it ends
-            if (
-                in_quotes
-                and i != self.open_quote
-                and char == __line[self.open_quote]
-            ):
+            if in_quotes and i != self.open_quote and char == __line[self.open_quote]:
                 in_quotes = False
                 self.close_quote = i
 
@@ -102,11 +93,10 @@ class LineInfo:
                 self.tokens[char].append(i)
 
                 # assignment location
-                if (
-                    char == Tokens.EQUAL_SIGN
-                    and self.assignment == -1
-                ):
+                if char == Tokens.EQUAL_SIGN and self.assignment == -1:
                     self.assignment = i
+            del i, char
+        del in_quotes
 
         # clean trailing spaces
         self.line = self.line.rstrip()
@@ -126,8 +116,9 @@ class SyntaxChecker:
         # smallest (but not -1) index
         quoted = info.open_quote != -1
 
-        # there can only be 2 delimiting quotes (open and close), but an arbritrary amount of the other one 
+        # there can only be 2 delimiting quotes (open and close), but an arbritrary amount of the other one
         if quoted and info.line.count(info.line[info.open_quote]) != 2:
+            del quoted
             return "Malformed string, check out your quotes"
 
         #######################
@@ -137,27 +128,21 @@ class SyntaxChecker:
         is_scope_setter = (
             info.line[0] == Tokens.OPENING_BRACKET
             and info.line[-1] == Tokens.CLOSING_BRACKET
-        ) 
+        )
 
         if not (is_assignment or is_scope_setter):
-            return (
-                "Line has to contain either "
-                "an assignment or scope setter"
-            )
+            del quoted, is_assignment, is_scope_setter
+            return "Line has to contain either " "an assignment or scope setter"
 
         if is_assignment and is_scope_setter:
-            return (
-                "Line cant be an assignment and "
-                "scope setter at the same time"
-            )
+            del quoted, is_assignment, is_scope_setter
+            return "Line cant be an assignment and " "scope setter at the same time"
 
         ##############
         # Assignment #
         ##############
-        if (
-            is_assignment and
-            not len(info.line) > (info.assignment + 1)
-        ):
+        if is_assignment and not len(info.line) > (info.assignment + 1):
+            del quoted, is_assignment, is_scope_setter
             return "Invalid assignment, nothing after equal sign"
 
         # If we got here, everything was correct
@@ -181,7 +166,7 @@ class Parser:
         """Parse incoming TOML."""
 
         self.data = Dotty()
-        self._scope = "" 
+        self._scope = ""
         self._ignore_exc = ignore_exc
 
         lines = __text.replace("\r", "").split("\n")
@@ -192,15 +177,12 @@ class Parser:
     def _parse_value(self, __value: str, __line_info: Optional[LineInfo] = None) -> Any:
         """
         (Try) Convert a string into a value.
-        
+
         Note: __line_info is only used when parsing lists
         """
 
         # quoted string, has to be first, to prevent casting it
-        if (
-            __value[0] in Tokens.QUOTES
-            and __value[0] == __value[-1]
-        ):
+        if __value[0] in Tokens.QUOTES and __value[0] == __value[-1]:
             return __value[1:-1]
 
         # integer
@@ -214,13 +196,9 @@ class Parser:
         # bin/octal/hex literal
         if __value[0] == "0":
             specifier = __value[1].lower()
-            base = {
-                "b": 2,
-                "o": 8,
-                "x": 16
-            }.get(specifier, 0)
+            base = {"b": 2, "o": 8, "x": 16}.get(specifier, 0)
             return int(__value, base)
-        
+
         # float
         if (
             __value.count(".") == 1
@@ -253,18 +231,22 @@ class Parser:
                 raise TOMLError("Mismatched brackets.")
 
             value, _ = self._parse_list(__line_info.line, opening[0] + 1)
+            del opening, closing
             return value
 
         # couldn't parse, raise Exception
-        raise TOMLError(f"Couldn't parse value: `{__value}` (Hint, remember to wrap strings in quotes)")
+        raise TOMLError(
+            f"Couldn't parse value: `{__value}` (Hint, remember to wrap strings in quotes)"
+        )
 
     def _parse_assignment(self, __line_info: LineInfo) -> None:
         split_at = __line_info.tokens[Tokens.EQUAL_SIGN][0]
         _key = __line_info.line[:split_at].strip()
-        _value = __line_info.line[split_at+1:].strip()
+        _value = __line_info.line[split_at + 1 :].strip()
 
         key = f"{self._scope}.{_key}" if self._scope else _key
         self.data[key] = self._parse_value(_value, __line_info)
+        del key, split_at, _key, _value
 
     def _parse_list(self, __line: str, __start: int) -> tuple[list[Any], int]:
         """
@@ -301,8 +283,10 @@ class Parser:
             # collect another char
             else:
                 text += char
+            del char
 
         # how do we get here?
+        del text
         return elements, pos
 
     def _parse_line(self, __i: int, __line: str) -> None:
@@ -316,12 +300,14 @@ class Parser:
             # lines with comments dont clear scope, empty ones do
             if not info.had_comment:
                 self._scope = ""
+            del info
             return
-        
+
         message = SyntaxChecker.check(info)
         if message and not self._ignore_exc:
+            del info
             raise TOMLError(f"{message} in line {__i}")
-        
+
         # at this point, line should have content and correct syntax, this code can be rather dumb
         # we can't strip or anything like that tho, indexes would be broken
 
@@ -332,8 +318,9 @@ class Parser:
         # no equal sign => scope assignment, ie: [scope]
         else:
             # remove "[" and "]"
-            scope = info.line[1:-1]
-            self._scope = scope
+            self._scope = info.line[1:-1]
+        del info
+
 
 ##############
 # Public API #
@@ -363,7 +350,8 @@ def dumps(__data: Dotty | dict) -> str:
         """Little helper to sort the tables."""
         return (
             # len cant be -1 on a string, this ensures root elements being first
-            -1 if x == __data._BASE_DICT
+            -1
+            if x == __data._BASE_DICT
             else len(x)
         )
 
@@ -374,6 +362,7 @@ def dumps(__data: Dotty | dict) -> str:
         # special case for tables without direct childs (ie: only nested ones)
         # skip them
         if all(map(lambda x: isinstance(x, dict), table.values())):
+            del table
             continue
 
         # special case for items at root of the dict
@@ -383,18 +372,21 @@ def dumps(__data: Dotty | dict) -> str:
         for key, value in table.items():
             # will be handled by another iteration
             if isinstance(value, dict):
+                del key, value, table
                 continue
 
             # enclose string in quotes to prevent casting it when reading
             # actually, TOML enforces the use of quotes, while this lib does not
             if isinstance(value, str):
-                value = f"\"{value}\""
+                value = f'"{value}"'
 
             out.write(f"{key}={value}\n")
+            del key, value
 
         # empty line to reset scope + readability
         out.write("\n")
 
+    del table, _order
     return out.getvalue()
 
 
