@@ -132,11 +132,11 @@ class SyntaxChecker:
 
         if not (is_assignment or is_scope_setter):
             del quoted, is_assignment, is_scope_setter
-            return "Line has to contain either " "an assignment or scope setter"
+            return "Line has to contain either an assignment or scope setter"
 
         if is_assignment and is_scope_setter:
             del quoted, is_assignment, is_scope_setter
-            return "Line cant be an assignment and " "scope setter at the same time"
+            return "Line cant be an assignment and scope setter at the same time"
 
         ##############
         # Assignment #

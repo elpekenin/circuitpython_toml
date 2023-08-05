@@ -46,11 +46,6 @@ class Dotty:
                     for k, v in value.items():
                         _fill(f"{key}.{k}", v)
                 del key, value
-                """
-                This del may cause an issue,
-                due to cp weirdness, do test it.
-                WARNING WARNING WARNING WARNING WARNING
-                """
 
             for k, v in self._data.items():
                 _fill(k, v)
@@ -124,14 +119,7 @@ class Dotty:
 
         item = self._data
         for k in keys:
-            global_key += "." + str(k)
-            """
-            fstrings are cool but slow and leave garbage mem
-            For a single thing, it's best to just use +
-
-            I do not know if k is always a string.
-            if it is, remove the typecast.
-            """
+            global_key += "." + k
             item = self._get_or_create(item, k, global_key)
 
         item[last] = value  # Unsure what happens here, leaving untouched.
