@@ -104,7 +104,7 @@ class Dotty:
 
             item[k] = {}
 
-        del global_key, k, item
+        del global_key
         return item[k]
 
     def __setitem__(self, key: str, value: Any):
