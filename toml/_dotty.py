@@ -122,8 +122,8 @@ class Dotty:
             global_key += "." + k
             item = self._get_or_create(item, k, global_key)
 
-        item[last] = value  # Unsure what happens here, leaving untouched.
-        del value
+        item[last] = value
+        del item, value
 
     def __getattr__(self, key: str) -> Any:
         """Redirect some methods to dict's builtin ones. Perhaps not too useful."""
