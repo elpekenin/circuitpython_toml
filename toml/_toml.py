@@ -193,12 +193,6 @@ class Parser:
         if __value[0] == "-" and __value[1:].isdigit():
             return -int(__value[1:])
 
-        # bin/octal/hex literal
-        if __value[0] == "0":
-            specifier = __value[1].lower()
-            base = {"b": 2, "o": 8, "x": 16}.get(specifier, 0)
-            return int(__value, base)
-
         # float
         if (
             __value.count(".") == 1
@@ -214,6 +208,12 @@ class Parser:
             and __value[1:].replace(".", "0", 1).isdigit()
         ):
             return -float(__value[1:])
+
+        # bin/octal/hex literal
+        if __value[0] == "0":
+            specifier = __value[1].lower()
+            base = {"b": 2, "o": 8, "x": 16}.get(specifier, 0)
+            return int(__value, base)
 
         # bool
         if __value in {"true", "false"}:

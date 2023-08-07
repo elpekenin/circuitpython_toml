@@ -3,3 +3,11 @@ repos:
     rev: 23.7.0
     hooks:
     -   id: black
+
+-   repo: local
+    hooks:
+    -   id: tests
+        name: Run tests
+        entry: python -m tests
+        language: python
+        types: [python]
