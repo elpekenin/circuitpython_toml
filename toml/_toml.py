@@ -31,7 +31,8 @@ class Tokens:
     ALL = {
         OPENING_BRACKET,
         CLOSING_BRACKET,
-        *QUOTES,
+        SINGLE_QUOTE,
+        DOUBLE_QUOTE,
         EQUAL_SIGN,
         COMMA,
     }

@@ -15,12 +15,14 @@ As of summer 2023, `os.getenv`:
 * Can only read one key at a time.
 * Cant change values. To be fair, most of the times CircuitPython will have read-only access t othe filesystem, anyway.
 
-While this is good enough for many use cases, i felt like writing a feature-complete(ish) parser would be nice for the sake of learning but also to help other users getting around these limitations
+While this is good enough for many use cases, i felt like writing a feature-complete(ish) parser would be nice for the sake of learning but also to help other users getting around these limitations.
 
 Features
 ========
 
-Covers a nice amount of the TOML spec, some of the limitations are (non-exhaustive list):
+Covers (what i feel are) the most useful parts of the TOML spec.
+
+Some unsupported things are (non-exhaustive list):
 
 * Multi-line strings (aka triple quoted ones)
 * Quoted keys
@@ -28,6 +30,20 @@ Covers a nice amount of the TOML spec, some of the limitations are (non-exhausti
 * Date literals
 * Scientific notation (eg 10e3)
 * Separators in numbers (eg 10_000)
+
+Usage
+=====
+
+It's pretty straight forwards, but just in case, here is a little example. Demonstrating the power of `Dotty` for accessing nested items.
+
+.. code-block:: python
+
+   >>> import toml
+   >>> data = toml.load("settings.toml")
+   >>> data["foo"]["bar"]
+   "baz"
+   >>> data["foo.bar"]
+   "baz"
 
 Contributing
 ============
