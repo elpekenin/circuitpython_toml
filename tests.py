@@ -1,3 +1,7 @@
+"""
+Small test suite for the library.
+"""
+
 try:
     from typing import Optional
 except ImportError:

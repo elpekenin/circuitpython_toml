@@ -17,6 +17,14 @@ As of summer 2023, `os.getenv`:
 
 While this is good enough for many use cases, i felt like writing a feature-complete(ish) parser would be nice for the sake of learning but also to help other users getting around these limitations.
 
+Dependencies
+=============
+This driver depends on:
+
+* `Adafruit CircuitPython <https://github.com/adafruit/circuitpython>`_
+
+i.e. No dependencies :)
+
 Features
 ========
 
@@ -31,10 +39,11 @@ Some unsupported things are (non-exhaustive list):
 * Scientific notation (eg 10e3)
 * Separators in numbers (eg 10_000)
 
-Usage
-=====
+Usage Example
+=============
 
-It's pretty straight forwards, but just in case, here is a little example. Demonstrating the power of `Dotty` for accessing nested items.
+It's pretty straight forward, it's similar to the `toml` module on CPython's standard lib.
+Here's a little example showing the power of `Dotty` for accessing nested items.
 
 .. code-block:: python
 
@@ -48,9 +57,10 @@ It's pretty straight forwards, but just in case, here is a little example. Demon
 Contributing
 ============
 
-TODO: Proper list of requisites and whatnot. For now just open PRs and issues as desired.
+TODO: Proper list of requisites and whatnot.
+For now just open PRs and issues, they are very much welcome!!
 
 Acknowledgements
 ================
 
-`dotty_dict <https://github.com/pawelzny/dotty_dict>`_ For the inspiration for the wrapper (which is also a subset re-implementation) to easily set values based on dotted keys
+`dotty_dict <https://github.com/pawelzny/dotty_dict>`_ For the inspiration to do a wrapper on top of a dict to easily access items based on dotted keys (`Dotty` is a subset of said library)
