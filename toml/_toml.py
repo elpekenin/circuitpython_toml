@@ -96,8 +96,6 @@ class LineInfo:
                 # assignment location
                 if char == Tokens.EQUAL_SIGN and self.assignment == -1:
                     self.assignment = i
-            del i, char
-        del in_quotes
 
         # clean trailing spaces
         self.line = self.line.rstrip()
@@ -119,7 +117,6 @@ class SyntaxChecker:
 
         # there can only be 2 delimiting quotes (open and close), but an arbritrary amount of the other one
         if quoted and info.line.count(info.line[info.open_quote]) != 2:
-            del quoted
             return "Malformed string, check out your quotes"
 
         #######################
@@ -132,18 +129,15 @@ class SyntaxChecker:
         )
 
         if not (is_assignment or is_scope_setter):
-            del quoted, is_assignment, is_scope_setter
             return "Line has to contain either an assignment or scope setter"
 
         if is_assignment and is_scope_setter:
-            del quoted, is_assignment, is_scope_setter
             return "Line cant be an assignment and scope setter at the same time"
 
         ##############
         # Assignment #
         ##############
         if is_assignment and not len(info.line) > (info.assignment + 1):
-            del quoted, is_assignment, is_scope_setter
             return "Invalid assignment, nothing after equal sign"
 
         # If we got here, everything was correct
@@ -232,7 +226,6 @@ class Parser:
                 raise TOMLError("Mismatched brackets.")
 
             value, _ = self._parse_list(__line_info.line, opening[0] + 1)
-            del opening, closing
             return value
 
         # couldn't parse, raise Exception
@@ -247,7 +240,6 @@ class Parser:
 
         key = f"{self._scope}.{_key}" if self._scope else _key
         self.data[key] = self._parse_value(_value, __line_info)
-        del key, split_at, _key, _value
 
     def _parse_list(self, __line: str, __start: int) -> tuple[list[Any], int]:
         """
@@ -284,10 +276,8 @@ class Parser:
             # collect another char
             else:
                 text += char
-            del char
 
         # how do we get here?
-        del text
         return elements, pos
 
     def _parse_line(self, __i: int, __line: str) -> None:
@@ -301,12 +291,10 @@ class Parser:
             # lines with comments dont clear scope, empty ones do
             if not info.had_comment:
                 self._scope = ""
-            del info
             return
 
         message = SyntaxChecker.check(info)
         if message and not self._ignore_exc:
-            del info
             raise TOMLError(f"{message} in line {__i}")
 
         # at this point, line should have content and correct syntax, this code can be rather dumb
@@ -320,7 +308,6 @@ class Parser:
         else:
             # remove "[" and "]"
             self._scope = info.line[1:-1]
-        del info
 
 
 ##############
@@ -363,7 +350,6 @@ def dumps(__data: Dotty | dict) -> str:
         # special case for tables without direct childs (ie: only nested ones)
         # skip them
         if all(map(lambda x: isinstance(x, dict), table.values())):
-            del table
             continue
 
         # special case for items at root of the dict
@@ -373,7 +359,6 @@ def dumps(__data: Dotty | dict) -> str:
         for key, value in table.items():
             # will be handled by another iteration
             if isinstance(value, dict):
-                del key, value, table
                 continue
 
             # enclose string in quotes to prevent casting it when reading
@@ -382,12 +367,10 @@ def dumps(__data: Dotty | dict) -> str:
                 value = f'"{value}"'
 
             out.write(f"{key}={value}\n")
-            del key, value
 
         # empty line to reset scope + readability
         out.write("\n")
 
-    del table, _order
     return out.getvalue()
 
 

@@ -134,7 +134,7 @@ TESTS = [
 
 max_len = max(map(lambda x: len(x.label), TESTS))
 
-underlined_print("Parsing tests...")
+underlined_print("Parsing")
 for test in TESTS:
     padding = " " * (max_len - len(test.label))
     print(f"{padding}{test.label} >> ", end="")
@@ -148,11 +148,17 @@ for test in TESTS:
 
     print("OK")
 
-# Ensure dumping and reading end up with same data structure
-# we cant use dump, as we have a read-only filesystem
 print()
-underlined_print("Integration tests")
+underlined_print("Others")
+
+# Ensure dumping and reading end up with same data structure
+# we cant use dump, as we -probably- have a read-only filesystem
 print("dumps + loads == original")
 data = {"foo": "bar", "nested": {"foo": "bar"}}
 if toml.loads(toml.dumps(data)) != Dotty(data):
     raise TestError("Data doesn't match")
+
+# https://github.com/elpekenin/circuitpython_toml/issues/3
+# Lets check that empty dicts dont break things
+print("dumping empty dict")
+toml.dumps({"y": {}})
