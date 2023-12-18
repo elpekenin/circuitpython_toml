@@ -310,6 +310,31 @@ class Parser:
             self._scope = info.line[1:-1]
 
 
+def __get_file(__file: "Path | File", __mode):
+    """(Try) Get a file descriptor from argument (str/file)."""
+
+    # assume str == path
+    if isinstance(__file, str):
+        return open(__file, __mode)
+
+    # check the potential file
+    method_name = (
+        "writable"
+        if __mode == "w"
+        else "readable"
+    )
+
+    method = getattr(__file, method_name, None)
+
+    if method is None:
+        raise TOMLError("Not a file?")
+
+    if not method():
+        raise TOMLError("File open in wrong mode?")
+
+    return __file
+
+
 ##############
 # Public API #
 ##############
@@ -318,9 +343,9 @@ def loads(__str: str, *, ignore_exc: bool = False) -> Dotty:
     return Parser(__str, ignore_exc=ignore_exc).data
 
 
-def load(__file: "Path", *, ignore_exc: bool = False) -> Dotty:
+def load(__file: "Path | File", *, ignore_exc: bool = False) -> Dotty:
     """Parse TOML from a file-like."""
-    with open(__file, "r") as f:
+    with __get_file(__file, "r") as f:
         return loads(f.read(), ignore_exc=ignore_exc)
 
 
@@ -374,9 +399,9 @@ def dumps(__data: Dotty | dict) -> str:
     return out.getvalue()
 
 
-def dump(__data: Dotty | dict, __file: "Path"):
+def dump(__data: Dotty | dict, __file: "Path | File"):
     """Write a (dotty) dict as TOML into a file."""
-    with open(__file, "w") as f:
+    with __get_file(__file, "w") as f:
         f.write(dumps(__data))
 
 

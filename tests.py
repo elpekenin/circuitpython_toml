@@ -10,6 +10,9 @@ except ImportError:
 import toml
 from toml._dotty import Dotty
 
+TEST_FILE = "__test__.toml"
+CANT_PARSE = "Couldn't parse value"
+
 
 def underlined_print(msg):
     """Helper to print a header."""
@@ -20,7 +23,34 @@ def underlined_print(msg):
 class TestError(Exception):
     """Custom class for test errors."""
 
-    pass
+
+def assertEqual(a, b):
+    if a != b:
+        raise TestError(f"{a} doesn't match {b}")
+
+
+class ExceptionManager:
+    def __init__(self, *exceptions, msg):
+        self.exc = exceptions
+        self.msg = msg
+
+    def __enter__(self) -> "ExceptionManager":
+        return self
+
+    def __exit__(self, exc_t: type, exc_v: Exception, _exc_tb):
+        # "assertion" failed, just let it raise
+        if exc_t == SystemExit:
+            return
+
+        # unexpected exc or no expection when expected it
+        if exc_t not in self.exc:
+            raise TestError(f"Got {exc_t} while expecting {self.exc}")
+
+        # exception message doesnt match the expected one
+        if self.msg and self.msg.lower() not in str(exc_v).lower():
+            raise TestError(f"Expected '{self.msg}' but got '{exc_v}'")
+
+        return True
 
 
 class Test:
@@ -38,29 +68,17 @@ class Test:
         self.output = output
         self.message = message
 
-    def __enter__(self) -> tuple[str, Dotty]:
-        return self.input, Dotty(self.output)
-
-    def __exit__(self, exc_t: type, exc_v: Exception, _exc_tb):
-        # "assertion" failed, just let it raise
-        if exc_t == SystemExit:
-            return
-
+    def run(self):
         # None or Exception
-        expected_exc = toml.TOMLError if self.message else None
+        expected_exc = (
+            toml.TOMLError
+            if self.message
+            else None
+        )
 
-        # unexpected exc or no expection when expected it
-        if exc_t != expected_exc:
-            raise TestError(f"Expected {expected_exc} but got {exc_t}")
+        with ExceptionManager(expected_exc, msg=self.message):
+            assertEqual(toml.loads(self.input), Dotty(self.output))
 
-        # exception message doesnt match the expected one
-        if self.message and self.message.lower() not in str(exc_v).lower():
-            raise TestError(f"Expected '{self.message}' but got '{exc_v}'")
-
-        return True
-
-
-CANT_PARSE = "Couldn't parse value"
 
 TESTS = [
     # minimal syntax checking
@@ -139,26 +157,47 @@ for test in TESTS:
     padding = " " * (max_len - len(test.label))
     print(f"{padding}{test.label} >> ", end="")
 
-    with test as (input_, expected):
-        output: Dotty = toml.loads(input_)
-
-        if output != expected:
-            print(f"ERROR: Expected {expected} but got {output}")
-            exit(1)
+    test.run()
 
     print("OK")
+
+
+# =====
 
 print()
 underlined_print("Others")
 
-# Ensure dumping and reading end up with same data structure
+# ensure dumping and reading end up with same data structure
 # we cant use dump, as we -probably- have a read-only filesystem
 print("dumps + loads == original")
 data = {"foo": "bar", "nested": {"foo": "bar"}}
-if toml.loads(toml.dumps(data)) != Dotty(data):
-    raise TestError("Data doesn't match")
+assertEqual(toml.loads(toml.dumps(data)), Dotty(data))
+
 
 # https://github.com/elpekenin/circuitpython_toml/issues/3
 # Lets check that empty dicts dont break things
 print("dumping empty dict")
 toml.dumps({"y": {}})
+
+
+print("load from str")
+from_str = toml.load(TEST_FILE)
+
+
+print("load from file")
+with open(TEST_FILE, "r") as f:
+    from_file = toml.load(f)
+
+
+print("from str == from file")
+assertEqual(from_str, from_file)
+
+
+print("wrong type")
+with ExceptionManager(toml.TOMLError, msg="Not a file?"):
+    toml.load(42)
+
+print("wrong mode")
+with ExceptionManager(toml.TOMLError, msg="File open in wrong mode?"):
+    with open(TEST_FILE, "a") as f:
+        toml.load(f)
