@@ -364,7 +364,7 @@ def dumps(__data: Dotty | dict) -> str:
         return (
             # len cant be -1 on a string, this ensures root elements being first
             -1
-            if x == __data._BASE_DICT
+            if x == __data._BASE
             else len(x)
         )
 
@@ -378,7 +378,7 @@ def dumps(__data: Dotty | dict) -> str:
             continue
 
         # special case for items at root of the dict
-        if table_name != __data._BASE_DICT:
+        if table_name != __data._BASE:
             out.write(f"[{table_name}]\n")
 
         for key, value in table.items():

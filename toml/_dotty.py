@@ -13,7 +13,7 @@ class Dotty:
     tables: set[str]
     """Stores the tables on this DottyDict."""
 
-    _BASE_DICT: str = "__base__"
+    _BASE = object()
     """Special id to return the base dict."""
 
     def __init__(self, __data: Optional[dict] = None, *, fill_tables: bool = False):
@@ -31,11 +31,10 @@ class Dotty:
         # shouldnt happen anyway, due to _get_or_create's logic
         self.tables = set()
 
-        # _BASE_DICT => items at root of the dict
-        self.tables.add(self._BASE_DICT)
+        # _BASE => items at root of the dict
+        self.tables.add(self._BASE)
 
         if fill_tables:
-
             def _fill(key: str, value: Any) -> None:
                 """Helper to iterate nested dicts"""
 
@@ -54,7 +53,14 @@ class Dotty:
 
     def __repr__(self):
         """Repr shows data and tables"""
-        return f"<Dotty data={self._data}, tables={self.tables}>"
+        tables = self.tables.copy()
+        tables.remove(self._BASE)
+        table_str = (
+            f", tables={tables}"
+            if tables
+            else ""
+        )
+        return f"<Dotty data={self._data}{table_str}>"
 
     @staticmethod
     def split(key: str) -> tuple[list[str], str]:
@@ -77,7 +83,7 @@ class Dotty:
         """Syntactic sugar to get a nested item."""
 
         # special case, return base dict
-        if key == self._BASE_DICT:
+        if key == self._BASE:
             return self._data
 
         keys, last = self.split(key)
@@ -101,9 +107,6 @@ class Dotty:
 
     def __setitem__(self, key: str, value: Any):
         """Syntactic sugar to set a nested item."""
-
-        if key == self._BASE_DICT:
-            raise KeyError(f"Using '{self._BASE_DICT}' as key is not supported")
 
         keys, last = self.split(key)
         global_key = ""
