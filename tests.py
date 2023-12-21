@@ -29,12 +29,34 @@ def assertEqual(a, b):
         raise TestError(f"{a} doesn't match {b}")
 
 
-class ExceptionManager:
-    def __init__(self, *exceptions, msg):
+def assertTrue(a):
+    assertEqual(a, True)
+
+
+def assertFalse(a):
+    assertEqual(a, False)
+
+
+def assertIn(a, b):
+    if a not in b:
+        raise TestError(f"{a} is not contained in {b}")
+
+
+def assertNotIn(a, b):
+    if a in b:
+        raise TestError(f"{a} is contained in {b}")
+
+
+class AssertRaises:
+    def __init__(
+        self,
+        *exceptions: list[Exception],
+        msg: Optional[str] = None
+    ):
         self.exc = exceptions
         self.msg = msg
 
-    def __enter__(self) -> "ExceptionManager":
+    def __enter__(self) -> "AssertRaises":
         return self
 
     def __exit__(self, exc_t: type, exc_v: Exception, _exc_tb):
@@ -76,7 +98,7 @@ class Test:
             else None
         )
 
-        with ExceptionManager(expected_exc, msg=self.message):
+        with AssertRaises(expected_exc, msg=self.message):
             assertEqual(toml.loads(self.input), Dotty(self.output))
 
 
@@ -174,8 +196,8 @@ data = {"foo": "bar", "nested": {"foo": "bar"}}
 assertEqual(toml.loads(toml.dumps(data)), Dotty(data))
 
 
-# https://github.com/elpekenin/circuitpython_toml/issues/3
 # Lets check that empty dicts dont break things
+# https://github.com/elpekenin/circuitpython_toml/issues/3
 print("dumping empty dict")
 toml.dumps({"y": {}})
 
@@ -194,10 +216,70 @@ assertEqual(from_str, from_file)
 
 
 print("wrong type")
-with ExceptionManager(toml.TOMLError, msg="Not a file?"):
+with AssertRaises(toml.TOMLError, msg="Not a file?"):
     toml.load(42)
 
 print("wrong mode")
-with ExceptionManager(toml.TOMLError, msg="File open in wrong mode?"):
+with AssertRaises(toml.TOMLError, msg="File open in wrong mode?"):
     with open(TEST_FILE, "a") as f:
         toml.load(f)
+
+# Lets check manually implemented dunders
+# https://github.com/elpekenin/circuitpython_toml/issues/4
+print("__contains__")
+data = toml.load(TEST_FILE)
+assertTrue("foo" in data)
+assertFalse("__wrong__" in data)
+
+print("__delitem__")
+# ======
+# case 1
+# ======
+# deleting a table causes its child to be deleted too
+data = Dotty(
+    {
+        "nested": {
+            "foo": {
+                "bar": {
+                    "baz": {
+                        "value": 42
+                    }
+                }
+            }
+        }
+    },
+    fill_tables=True
+)
+del data["nested.foo"]
+
+# target table deleted
+assertNotIn("nested.foo", data)
+assertNotIn("nested.foo.bar", data.tables)
+# child table deleted
+assertNotIn("nested.foo.bar.baz", data)
+assertNotIn("nested.foo.bar.baz", data.tables)
+# child item deleted
+assertNotIn("nested.foo.bar.baz.value", data)
+with AssertRaises(KeyError):
+    data["nested.foo.bar.bar.value"]
+
+# ======
+# case 2
+# ======
+# deleting the only element on a table deletes the table itself
+data = Dotty(
+    {
+        "nested": {
+            "value": 42
+        }
+    },
+    fill_tables=True
+)
+del data["nested.value"]
+
+# --- item deleted
+with AssertRaises(KeyError):
+    data["nested.value"]
+
+# --- would-be-empty table deleted
+assertNotIn("nested", data.tables)

@@ -2,7 +2,7 @@
 
 try:
     # types are needed on compyter
-    from typing import Any, Optional
+    from typing import Optional
 except ImportError:
     pass
 
@@ -35,7 +35,7 @@ class Dotty:
         self.tables.add(self._BASE)
 
         if fill_tables:
-            def _fill(key: str, value: Any) -> None:
+            def _fill(key: str, value: object) -> None:
                 """Helper to iterate nested dicts"""
 
                 if isinstance(value, dict):
@@ -64,7 +64,8 @@ class Dotty:
 
     @staticmethod
     def split(key: str) -> tuple[list[str], str]:
-        """Splits a key into last element and rest of them.
+        """
+        Splits a key into last element and rest of them.
 
         >>> split("foo")
         >>> [], "foo"
@@ -76,55 +77,72 @@ class Dotty:
         >>> ["foo", "bar"], "baz"
         """
 
+        # dont try to split non-str keys
+        if not isinstance(key, str):
+            return [], key
+
         parts = key.split(".")
         return parts[:-1], parts[-1]
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, __key: object) -> object:
         """Syntactic sugar to get a nested item."""
 
         # special case, return base dict
-        if key == self._BASE:
+        if __key == self._BASE:
             return self._data
 
-        keys, last = self.split(key)
+        keys, last = self.split(__key)
 
-        item = self._data
+        table = self._data
         for k in keys:
-            item = item[k]
+            table = table[k]
 
-        return item[last]
+        return table[last]
 
     def _get_or_create(self, item: dict, k: str, global_key: str) -> dict:
         """Helper function that creates the nested dict if not present."""
 
-        if k not in item:
-            # Add to tables             v get rid of heading dot
-            self.tables.add(global_key[1:])
+        if k not in item and isinstance(item, dict):
+            # Add to tables             v get rid of heading dot(s)
+            self.tables.add(global_key.lstrip("."))
 
             item[k] = {}
 
         return item[k]
 
-    def __setitem__(self, key: str, value: Any):
-        """Syntactic sugar to set a nested item."""
+    def __setitem__(self, __key: str, __value: object):
+        """
+        Syntactic sugar to set a nested item.
 
-        keys, last = self.split(key)
+        Known limitation, setting dicts doesn't update `self.tables`.
+        ie, expect issues with code like:
+        >>> dotty["foo"] = {"bar": baz}
+        """
+
+        keys, last = self.split(__key)
         global_key = ""
 
-        item = self._data
+        table = self._data
         for k in keys:
             global_key += "." + k
-            item = self._get_or_create(item, k, global_key)
+            table = self._get_or_create(table, k, global_key)
 
-        item[last] = value
+        table[last] = __value
 
-    def __getattr__(self, key: str) -> Any:
-        """Redirect some methods to dict's builtin ones. Perhaps not too useful."""
+    # === Main logic of Dotty ends here ===
+    # Below this point, it's mainly convenience for some operator/builtins
 
-        if hasattr(self._data, key):
-            return getattr(self._data, key)
+    def __getattr__(self, __key: str) -> object:
+        """
+        Redirect some methods to dict's builtin ones. Perhaps not too useful.
 
-        raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{key}'")
+        Apparently not too useful on CP
+          > https://github.com/elpekenin/circuitpython_toml/issues/4
+        """
+        if hasattr(self._data, __key):
+            return getattr(self._data, __key)
+
+        raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{__key}'")
 
     def __eq__(self, __value: object) -> bool:
         klass = self.__class__
@@ -135,3 +153,40 @@ class Dotty:
             )
 
         return self._data == __value._data
+
+    def __contains__(self, __key: object) -> bool:
+        try:
+            self.__getitem__(__key)
+            return True
+        except KeyError:
+            return False
+
+    def __delitem__(self, __key: object):
+        keys, last = self.split(__key)
+
+        parent_table = None
+        table = self._data
+        for k in keys:
+            parent_table = table
+            table = table[k]
+
+        # remove item from its table
+        del table[last]
+
+        # if table is empty after that, remove it too
+        if len(table) == 0:
+            if parent_table:
+                parent_table.pop(keys[-1])
+
+            self.tables.remove(".".join(keys))
+
+        # if key was a table itself, remove it (and children) from set
+        if __key in self.tables:
+            self.tables.remove(__key)
+
+            for table in self.tables.copy():
+                if (
+                    table != self._BASE
+                    and table.startswith(f"{__key}.")
+                ):
+                    self.tables.remove(table)
