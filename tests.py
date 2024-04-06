@@ -3,7 +3,7 @@ Small test suite for the library.
 """
 
 try:
-    from typing import Optional
+    from typing import Dict, Optional
 except ImportError:
     pass
 
@@ -82,7 +82,7 @@ class Test:
         self,
         input_: str,
         label: str,
-        output: Optional[str] = None,
+        output: Optional[Dict] = None,
         message: Optional[str] = None,
     ):
         self.input = input_
@@ -169,6 +169,22 @@ TESTS = [
             "list": {"nesting": {"nested_and_empty": [[], [[]]]}},
         },
     ),
+    Test(
+        """
+        [card]
+        bg = "tv"
+        text = "This is a different card."
+        options = [ ["(B)ack", "main"] ]
+        """,
+        label="Issue #5",
+        output={
+            "card": {
+                "bg": "tv",
+                "text": "This is a different card.",
+                "options": [["(B)ack", "main"]]
+            },
+        },
+    )
 ]
 
 

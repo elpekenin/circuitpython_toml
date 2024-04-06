@@ -47,12 +47,6 @@ class LineInfo:
     tokens: dict
     """Mapping from tokens to the position(s) where they are found on the line."""
 
-    open_quote: int = -1
-    """Position of the first " or ' found, -1 if none."""
-
-    close_quote: int = -1
-    """Position of the closing " or ', -1 if none."""
-
     assignment: int = -1
     """Position of the equal sign, -1 if none."""
 
@@ -64,6 +58,7 @@ class LineInfo:
         self.tokens = {t: [] for t in Tokens.ALL}
 
         in_quotes = False
+        quote_token = None
         for i, char in enumerate(__line.lstrip()):
             # upon finding a comment (not in a quoted string), quit
             if char == Tokens.COMMENT and not in_quotes:
@@ -75,15 +70,20 @@ class LineInfo:
             # add current char to "clean" string
             self.line += char
 
-            # keep track of opening quote
-            if char in Tokens.QUOTES and self.open_quote == -1:
-                in_quotes = True
-                self.open_quote = i
+            if char in Tokens.QUOTES:
+                # opening quote
+                if not quote_token:
+                    in_quotes = True
+                    quote_token = char
+                    self.tokens[char].append(i)
+                    continue
 
-            # ... and where it ends
-            if in_quotes and i != self.open_quote and char == __line[self.open_quote]:
-                in_quotes = False
-                self.close_quote = i
+                # closing quote
+                elif char == quote_token:
+                    in_quotes = False
+                    quote_token = None
+                    self.tokens[char].append(i)
+                    continue
 
             # no token data to be stored if we are in a string
             if in_quotes:
@@ -112,11 +112,11 @@ class SyntaxChecker:
         # String checks #
         #################
 
-        # smallest (but not -1) index
-        quoted = info.open_quote != -1
+        single = len(info.tokens[Tokens.SINGLE_QUOTE])
+        double = len(info.tokens[Tokens.DOUBLE_QUOTE])
 
-        # there can only be 2 delimiting quotes (open and close), but an arbritrary amount of the other one
-        if quoted and info.line.count(info.line[info.open_quote]) != 2:
+        # every openning quote should be closed too
+        if single % 2 != 0 or double % 2 != 0:
             return "Malformed string, check out your quotes"
 
         #######################
@@ -219,6 +219,9 @@ class Parser:
             __value[0] == Tokens.OPENING_BRACKET
             and __value[-1] == Tokens.CLOSING_BRACKET
         ):
+            if __line_info is None:
+                raise TOMLError("How did we end on array parsing without line info?")
+
             opening = __line_info.tokens[Tokens.OPENING_BRACKET]
             closing = __line_info.tokens[Tokens.CLOSING_BRACKET]
 
@@ -256,8 +259,9 @@ class Parser:
 
             # early stop when current list ends
             if char == Tokens.CLOSING_BRACKET:
-                if text:
-                    elements.append(self._parse_value(text.strip()))
+                _text = text.strip()
+                if _text:
+                    elements.append(self._parse_value(_text))
                 return elements, pos
 
             # parse list and update current position
@@ -269,8 +273,9 @@ class Parser:
 
             # parse the element we have collected so far
             elif char == Tokens.COMMA:
-                if text:
-                    elements.append(self._parse_value(text.strip()))
+                _text = text.strip()
+                if _text:
+                    elements.append(self._parse_value(_text))
                 text = ""
 
             # collect another char

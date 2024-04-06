@@ -1,6 +1,19 @@
 Changelog
 =========
 
+Version 0.1.7 (6th Apr 2024)
+----------------------------
+
+* Correct wront assumptions in the code (fix #5)
+
+
+Version 0.1.6 (21th Dec 2023)
+----------------------------
+
+* Cleanup some typing and var names
+* Implement `__contains__` and `__delitem__` (partial fix for #4)
+
+
 Version 0.1.5 (18th Dec 2023)
 ----------------------------
 
