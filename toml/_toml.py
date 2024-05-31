@@ -11,8 +11,6 @@ from ._dotty import Dotty
 class TOMLError(Exception):
     """Custom class for errors."""
 
-    pass
-
 
 class Tokens:
     OPENING_BRACKET = "["
@@ -120,19 +118,19 @@ class SyntaxChecker:
             return "Malformed string, check out your quotes"
 
         #######################
-        # Scope or assignment #
+        # Table or assignment #
         #######################
         is_assignment = info.assignment != -1
-        is_scope_setter = (
+        is_table_setter = (
             info.line[0] == Tokens.OPENING_BRACKET
             and info.line[-1] == Tokens.CLOSING_BRACKET
         )
 
-        if not (is_assignment or is_scope_setter):
-            return "Line has to contain either an assignment or scope setter"
+        if not (is_assignment or is_table_setter):
+            return "Line has to contain either an assignment or table setter"
 
-        if is_assignment and is_scope_setter:
-            return "Line cant be an assignment and scope setter at the same time"
+        if is_assignment and is_table_setter:
+            return "Line cant be an assignment and table setter at the same time"
 
         ##############
         # Assignment #
@@ -151,18 +149,14 @@ class Parser:
     data: Dotty
     """Dotty dict where the information from the TOML is stored."""
 
-    _scope: str
-    """Current scope ([scope], [another.scope]) of the parser."""
+    _table: str
+    """Current table ([table], [another.table]) of the parser."""
 
-    _ignore_exc: bool
-    """Whether TOMLError's are ignored."""
-
-    def __init__(self, __text: str, *, ignore_exc: bool = True):
+    def __init__(self, __text: str):
         """Parse incoming TOML."""
 
         self.data = Dotty()
-        self._scope = ""
-        self._ignore_exc = ignore_exc
+        self._table = ""
 
         lines = __text.replace("\r", "").split("\n")
         for i, line in enumerate(lines, 1):
@@ -241,7 +235,7 @@ class Parser:
         _key = __line_info.line[:split_at].strip()
         _value = __line_info.line[split_at + 1 :].strip()
 
-        key = f"{self._scope}.{_key}" if self._scope else _key
+        key = f"{self._table}.{_key}" if self._table else _key
         self.data[key] = self._parse_value(_value, __line_info)
 
     def _parse_list(self, __line: str, __start: int) -> tuple[list[Any], int]:
@@ -291,15 +285,12 @@ class Parser:
         # get information about this line
         info = LineInfo(__line)
 
-        # empty line clears scope
+        # empty line => nothing to be done
         if not info.line:
-            # lines with comments dont clear scope, empty ones do
-            if not info.had_comment:
-                self._scope = ""
             return
 
         message = SyntaxChecker.check(info)
-        if message and not self._ignore_exc:
+        if message:
             raise TOMLError(f"{message} in line {__i}")
 
         # at this point, line should have content and correct syntax, this code can be rather dumb
@@ -309,49 +300,23 @@ class Parser:
         if Tokens.EQUAL_SIGN in info.line:
             self._parse_assignment(info)
 
-        # no equal sign => scope assignment, ie: [scope]
+        # no equal sign => table assignment, ie: [table]
         else:
             # remove "[" and "]"
-            self._scope = info.line[1:-1]
-
-
-def __get_file(__file: "Path | File", __mode):
-    """(Try) Get a file descriptor from argument (str/file)."""
-
-    # assume str == path
-    if isinstance(__file, str):
-        return open(__file, __mode)
-
-    # check the potential file
-    method_name = (
-        "writable"
-        if __mode == "w"
-        else "readable"
-    )
-
-    method = getattr(__file, method_name, None)
-
-    if method is None:
-        raise TOMLError("Not a file?")
-
-    if not method():
-        raise TOMLError("File open in wrong mode?")
-
-    return __file
+            self._table = info.line[1:-1]
 
 
 ##############
 # Public API #
 ##############
-def loads(__str: str, *, ignore_exc: bool = False) -> Dotty:
+def loads(__str: str) -> Dotty:
     """Parse TOML from a string."""
-    return Parser(__str, ignore_exc=ignore_exc).data
+    return Parser(__str).data
 
 
-def load(__file: "Path | File", *, ignore_exc: bool = False) -> Dotty:
+def load(__file: "File") -> Dotty:
     """Parse TOML from a file-like."""
-    with __get_file(__file, "r") as f:
-        return loads(f.read(), ignore_exc=ignore_exc)
+    return loads(__file.read())
 
 
 def dumps(__data: Dotty | dict) -> str:
@@ -398,16 +363,15 @@ def dumps(__data: Dotty | dict) -> str:
 
             out.write(f"{key}={value}\n")
 
-        # empty line to reset scope + readability
+        # empty line for readability
         out.write("\n")
 
     return out.getvalue()
 
 
-def dump(__data: Dotty | dict, __file: "Path | File"):
+def dump(__data: Dotty | dict, __file: "File"):
     """Write a (dotty) dict as TOML into a file."""
-    with __get_file(__file, "w") as f:
-        f.write(dumps(__data))
+    __file.write(dumps(__data))
 
 
 __all__ = [

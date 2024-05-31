@@ -1,13 +1,22 @@
 Changelog
 =========
 
+
+Version 0.1.8 (1st Jun 2024)
+----------------------------
+
+* Fix #6 (@dtcooper), "selected" table should not be reset upon finding an empty line
+* Remove functionality (against common libraries) to accept strings in `load` and `dump`
+* Remove `ignore_exc`
+
+
 Version 0.1.7 (6th Apr 2024)
 ----------------------------
 
-* Correct wront assumptions in the code (fix #5)
+* Fix #5 (@joshua-beck-0908), we can handle multiple strings! (and some refactor)
 
 
-Version 0.1.6 (21th Dec 2023)
+Version 0.1.6 (21st Dec 2023)
 ----------------------------
 
 * Cleanup some typing and var names
@@ -24,7 +33,7 @@ Version 0.1.5 (18th Dec 2023)
 Version 0.1.4 (27th Nov 2023)
 ----------------------------
 
-* Fix #3 (@jepler), remove all `del`'s
+* Fix #3 (@jepler), should not crash with empty mappings
 * Add test case for empty dicts to cover edge cases like the one above
 
 

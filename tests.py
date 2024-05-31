@@ -1,301 +1,219 @@
 """
-Small test suite for the library.
+Test suite for the library
 """
 
-try:
-    from typing import Dict, Optional
-except ImportError:
-    pass
+import unittest
 
 import toml
 from toml._dotty import Dotty
 
 TEST_FILE = "__test__.toml"
-CANT_PARSE = "Couldn't parse value"
 
 
-def underlined_print(msg):
-    """Helper to print a header."""
-    print(msg)
-    print("-" * len(msg))
+class Syntax(unittest.TestCase):
+    """Minimal syntax check rules."""
+
+    CANT_PARSE = "Couldn't parse value"
+
+    def syntax_error(self, file: str, message: str):
+        """Common logic to check messages coming from syntax errors."""
+
+        with self.assertRaises(toml.TOMLError) as cm:
+            toml.loads(file)
+
+        self.assertIn(message, str(cm.exception_value))
+
+    def test_no_table_nor_assignment(self):
+        self.syntax_error("foo", "assignment or table setter")
+
+    def test_table_and_assignment(self):
+        self.syntax_error("[foo=bar]", "assignment and table setter")
+
+    def test_assignment_without_value(self):
+        self.syntax_error("foo = ", "nothing after equal sign")
+
+    def test_extra_quote(self):
+        self.syntax_error("foo = 'bar''", "Malformed string")
+
+    def test_content_after_string(self):
+        self.syntax_error("foo = 'bar'baz", self.CANT_PARSE)
+
+    def test_invalid_value(self):
+        """String values must be quoted."""
+        self.syntax_error("foo = bar", self.CANT_PARSE)
+
+    def test_bool_casing(self):
+        """Boolean are all-lowercase."""
+        self.syntax_error("foo = True", self.CANT_PARSE)
+
+    def test_negative_values(self):
+        """bin, oct and hex numbers can't be negative."""
+        self.syntax_error("foo = -0b10", self.CANT_PARSE)
+        self.syntax_error("foo = -0o10", self.CANT_PARSE)
+        self.syntax_error("foo = -0x10", self.CANT_PARSE)
 
 
-class TestError(Exception):
-    """Custom class for test errors."""
+class ParseMixin:
+    def assertParsedValue(self, file: str, expected: dict):
+        """Common logic to check the parsed value(s)."""
+        self.assertEqual(toml.loads(file), Dotty(expected))
 
+class Parse(unittest.TestCase, ParseMixin):
+    """Values are parsed correctly."""
 
-def assertEqual(a, b):
-    if a != b:
-        raise TestError(f"{a} doesn't match {b}")
+    def test_comments(self):
+        self.assertParsedValue("# foo = bar", {})
+        self.assertParsedValue("foo = 'bar'  # baz", {"foo": "bar"})
 
+    def test_strings(self):
+        self.assertParsedValue("foo = 'bar'", {"foo": "bar"})
+        self.assertParsedValue("foo = '#bar'", {"foo": "#bar"})
+        self.assertParsedValue("foo = 'bar\"baz'", {"foo": "bar\"baz"})
+        self.assertParsedValue("foo = '0'", {"foo": "0"})  # not an int
 
-def assertTrue(a):
-    assertEqual(a, True)
+    def test_numbers(self):
+        self.assertParsedValue("foo = 0b10", {"foo": 0b10})
+        self.assertParsedValue("foo = 0o34", {"foo": 0o34})
+        self.assertParsedValue("foo = 0x34", {"foo": 0x34})
+        self.assertParsedValue("foo = 1234", {"foo": 1234})
+        self.assertParsedValue("foo = -234", {"foo": -234})
+        self.assertParsedValue("foo = 1.34", {"foo": 1.34})
+        self.assertParsedValue("foo = -2.4", {"foo": -2.4})
 
+    def test_invalid_numbers(self):
+        with self.assertRaises(ValueError) as cm:
+            toml.loads("foo = 0b9")
 
-def assertFalse(a):
-    assertEqual(a, False)
-
-
-def assertIn(a, b):
-    if a not in b:
-        raise TestError(f"{a} is not contained in {b}")
-
-
-def assertNotIn(a, b):
-    if a in b:
-        raise TestError(f"{a} is contained in {b}")
-
-
-class AssertRaises:
-    def __init__(
-        self,
-        *exceptions: list[Exception],
-        msg: Optional[str] = None
-    ):
-        self.exc = exceptions
-        self.msg = msg
-
-    def __enter__(self) -> "AssertRaises":
-        return self
-
-    def __exit__(self, exc_t: type, exc_v: Exception, _exc_tb):
-        # "assertion" failed, just let it raise
-        if exc_t == SystemExit:
-            return
-
-        # unexpected exc or no expection when expected it
-        if exc_t not in self.exc:
-            raise TestError(f"Got {exc_t} while expecting {self.exc}")
-
-        # exception message doesnt match the expected one
-        if self.msg and self.msg.lower() not in str(exc_v).lower():
-            raise TestError(f"Expected '{self.msg}' but got '{exc_v}'")
-
-        return True
-
-
-class Test:
-    """Class to model a test."""
-
-    def __init__(
-        self,
-        input_: str,
-        label: str,
-        output: Optional[Dict] = None,
-        message: Optional[str] = None,
-    ):
-        self.input = input_
-        self.label = label
-        self.output = output
-        self.message = message
-
-    def run(self):
-        # None or Exception
-        expected_exc = (
-            toml.TOMLError
-            if self.message
-            else None
+        self.assertIn(
+            "invalid syntax for integer with base 2",
+            str(cm.exception_value)
         )
 
-        with AssertRaises(expected_exc, msg=self.message):
-            assertEqual(toml.loads(self.input), Dotty(self.output))
+    def test_booleans(self):
+        self.assertParsedValue("foo = false", {"foo": False})
+        self.assertParsedValue("foo = true", {"foo": True})
+
+    def test_lists(self):
+        self.assertParsedValue("foo = []", {"foo": []})
+        self.assertParsedValue("foo = [1, 2]", {"foo": [1, 2]})
+        self.assertParsedValue("foo = [1, true, []]", {"foo": [1, True, []]})
+        self.assertParsedValue("foo = [[1, 2], [1]]", {"foo": [[1, 2], [1]]})
+        self.assertParsedValue("foo = [[[]], []]", {"foo": [[[]], []]})
+
+    def test_tables(self):
+        self.assertParsedValue(
+            """
+            foo = 0
+            [bar]
+            foo = 1
+            [baz.baz]
+            foo = 2
+            """,
+            {"foo": 0, "bar": {"foo": 1}, "baz": {"baz": {"foo": 2}}}
+        )
 
 
-TESTS = [
-    # minimal syntax checking
-    Test(
-        "empty_line",
-        label="No scope nor equals",
-        message="Either an assignment or scope setter",
-    ),
-    Test(
-        "[3=2]",
-        label="Scope and equals",
-        message="Assignment and scope setter at the same time",
-    ),
-    Test("foo = ", label="Equals without value", message="Nothing after equal sign"),
-    # valid string
-    Test("foo = 'bar''", label="Extra quote", message="Malformed string"),
-    Test("foo = 'bar'bad", label="Content after string", message=CANT_PARSE),
-    Test("var = foo", label="Invalid value", message=CANT_PARSE),
-    # bool casing
-    Test("foo = True", label="Py-like boolean", message=CANT_PARSE),
-    # for some reason, only negative floats and integers are supported
-    Test("var = -0b10", label="Negative bin", message=CANT_PARSE),
-    Test("var = -0o10", label="Negative oct", message=CANT_PARSE),
-    Test("var = -0x10", label="Negative hex", message=CANT_PARSE),
-    # ------------------------------------------------------------
-    # parsing simple values
-    Test("# var = foo", label="Standalone comment", output={}),
-    Test("var = 'foo' # comment", label="Inline comment", output={"var": "foo"}),
-    Test("var = '#foo'", label="String with #", output={"var": "#foo"}),
-    Test("var = 'foo\"quote'", label="Quote in string", output={"var": 'foo"quote'}),
-    Test("var = 'foo'", label="String", output={"var": "foo"}),
-    Test("var =  '3'", label="String not casted", output={"var": "3"}),
-    Test("var = 3", label="Positive int", output={"var": 3}),
-    Test("var = -42", label="Negative int", output={"var": -42}),
-    Test("var = 6.9", label="Positive float", output={"var": 6.9}),
-    Test("var = 0x10", label="Positive hex", output={"var": 0x10}),
-    Test("var = true", label="boolean", output={"var": True}),
-    Test("var = [3, 2]", label="basic list", output={"var": [3, 2]}),
-    # complex parsing, many types, with nested lists
-    Test(
-        """
-        var = 'string'
+class Issues(unittest.TestCase, ParseMixin):
+    """Reported issues that have been solved since."""
 
-        [numbers]
-        integer = [1, -1]
-        float = [1.1, -1.1]
-        literals = [0b10, 0o10, 0x10]
+    def test_3(self):
+        """Empty dict raised exception before this issue got solved."""
+        toml.dumps({"y": {}})
 
-        [bool]
-        both = [true, false]
+    def test_4(self):
+        """There were some missing dunders, making stuff to fail."""
 
-        [list.nesting]
-        nested_and_empty = [[], [[]]]
-        """,
-        label="Everything",
-        output={
-            "var": "string",
-            "numbers": {
-                "integer": [1, -1],
-                "literals": [0b10, 0o10, 0x10],
-                "float": [1.1, -1.1],
-            },
-            "bool": {
-                "both": [True, False],
-            },
-            "list": {"nesting": {"nested_and_empty": [[], [[]]]}},
-        },
-    ),
-    Test(
-        """
-        [card]
-        bg = "tv"
-        text = "This is a different card."
-        options = [ ["(B)ack", "main"] ]
-        """,
-        label="Issue #5",
-        output={
-            "card": {
-                "bg": "tv",
-                "text": "This is a different card.",
-                "options": [["(B)ack", "main"]]
-            },
-        },
-    )
-]
+        with open(TEST_FILE, "r") as f:
+            data = toml.load(f)
 
+        # __contains__
+        self.assertTrue("foo" in data)
+        self.assertFalse("__wrong__" in data)
 
-max_len = max(map(lambda x: len(x.label), TESTS))
-
-underlined_print("Parsing")
-for test in TESTS:
-    padding = " " * (max_len - len(test.label))
-    print(f"{padding}{test.label} >> ", end="")
-
-    test.run()
-
-    print("OK")
-
-
-# =====
-
-print()
-underlined_print("Others")
-
-# ensure dumping and reading end up with same data structure
-# we cant use dump, as we -probably- have a read-only filesystem
-print("dumps + loads == original")
-data = {"foo": "bar", "nested": {"foo": "bar"}}
-assertEqual(toml.loads(toml.dumps(data)), Dotty(data))
-
-
-# Lets check that empty dicts dont break things
-# https://github.com/elpekenin/circuitpython_toml/issues/3
-print("dumping empty dict")
-toml.dumps({"y": {}})
-
-
-print("load from str")
-from_str = toml.load(TEST_FILE)
-
-
-print("load from file")
-with open(TEST_FILE, "r") as f:
-    from_file = toml.load(f)
-
-
-print("from str == from file")
-assertEqual(from_str, from_file)
-
-
-print("wrong type")
-with AssertRaises(toml.TOMLError, msg="Not a file?"):
-    toml.load(42)
-
-print("wrong mode")
-with AssertRaises(toml.TOMLError, msg="File open in wrong mode?"):
-    with open(TEST_FILE, "a") as f:
-        toml.load(f)
-
-# Lets check manually implemented dunders
-# https://github.com/elpekenin/circuitpython_toml/issues/4
-print("__contains__")
-data = toml.load(TEST_FILE)
-assertTrue("foo" in data)
-assertFalse("__wrong__" in data)
-
-print("__delitem__")
-# ======
-# case 1
-# ======
-# deleting a table causes its child to be deleted too
-data = Dotty(
-    {
-        "nested": {
-            "foo": {
-                "bar": {
-                    "baz": {
-                        "value": 42
+        # __delitem__ (1) removing a table removes its children too
+        data = Dotty(
+            {
+                "foo": {
+                    "bar": {
+                        "baz": {
+                            "value": 0
+                        }
                     }
                 }
+            },
+            fill_tables=True
+        )
+        del data["foo.bar"]
+
+        # keys do not exist
+        self.assertNotIn("foo.bar", data)
+        self.assertNotIn("foo.bar.baz", data)
+        self.assertNotIn("foo.bar.baz.value", data)
+
+        # neither are tables tracked
+        self.assertNotIn("foo.bar", data.tables)
+        self.assertNotIn("foo.bar.baz", data.tables)
+
+        with self.assertRaises(KeyError):
+            data["foo.bar.bar.value"]
+
+        # __delitem__ (2) removing single element on table, removes the table
+        data = Dotty(
+            {
+                "foo": {
+                    "bar": 0
+                }
+            },
+            fill_tables=True
+        )
+        del data["foo.bar"]
+
+        with self.assertRaises(KeyError):
+            data["foo.bar"]
+
+        self.assertNotIn("foo", data.tables)
+
+    def test_5(self):
+        self.assertParsedValue(
+            """
+            [card]
+            bg = "tv"
+            text = "This is a different card."
+            options = [ ["(B)ack", "main"] ]
+            """,
+            {
+                "card": {
+                    "bg": "tv",
+                    "text": "This is a different card.",
+                    "options": [["(B)ack", "main"]]
+                },
             }
-        }
-    },
-    fill_tables=True
-)
-del data["nested.foo"]
+        )
 
-# target table deleted
-assertNotIn("nested.foo", data)
-assertNotIn("nested.foo.bar", data.tables)
-# child table deleted
-assertNotIn("nested.foo.bar.baz", data)
-assertNotIn("nested.foo.bar.baz", data.tables)
-# child item deleted
-assertNotIn("nested.foo.bar.baz.value", data)
-with AssertRaises(KeyError):
-    data["nested.foo.bar.bar.value"]
+    def test_6(self):
+        self.assertParsedValue(
+            """
+            [test]
+            one = true
 
-# ======
-# case 2
-# ======
-# deleting the only element on a table deletes the table itself
-data = Dotty(
-    {
-        "nested": {
-            "value": 42
-        }
-    },
-    fill_tables=True
-)
-del data["nested.value"]
+            two = true
+            """,
+            {"test": {"one": True, "two": True}}
+        )
 
-# --- item deleted
-with AssertRaises(KeyError):
-    data["nested.value"]
 
-# --- would-be-empty table deleted
-assertNotIn("nested", data.tables)
+class Misc(unittest.TestCase):
+    """Miscellaneous tests."""
+
+    def test_dump_and_load(self):
+        """Loading the dump of a TOML retrieves the original data"""
+
+        data = {"foo": "bar", "baz": {"foo": "bar"}}
+        self.assertEqual(
+            toml.loads(toml.dumps(data)),
+            Dotty(data)
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
