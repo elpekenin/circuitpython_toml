@@ -18,10 +18,16 @@ class Syntax(unittest.TestCase):
     def syntax_error(self, file: str, message: str):
         """Common logic to check messages coming from syntax errors."""
 
-        with self.assertRaises(toml.TOMLError) as cm:
-            toml.loads(file)
+        # small incompatibility here
+        if hasattr(self, "assertRaisesRegex"):
+            with self.assertRaisesRegex(toml.TOMLError, message):
+                toml.loads(file)
 
-        self.assertIn(message, str(cm.exception_value))
+        else:
+            with self.assertRaises(toml.TOMLError) as cm:
+                toml.loads(file)
+
+            self.assertIn(message, str(cm.exception_value))
 
     def test_no_table_nor_assignment(self):
         self.syntax_error("foo", "assignment or table setter")
@@ -81,13 +87,19 @@ class Parse(unittest.TestCase, ParseMixin):
         self.assertParsedValue("foo = -2.4", {"foo": -2.4})
 
     def test_invalid_numbers(self):
-        with self.assertRaises(ValueError) as cm:
-            toml.loads("foo = 0b9")
+        file = "foo = 0b9"
+        message = "invalid"
 
-        self.assertIn(
-            "invalid syntax for integer with base 2",
-            str(cm.exception_value)
-        )
+        # small incompatibility here
+        if hasattr(self, "assertRaisesRegex"):
+            with self.assertRaisesRegex(ValueError, message):
+                toml.loads(file)
+
+        else:
+            with self.assertRaises(ValueError) as cm:
+                toml.loads(file)
+
+            self.assertIn(message, str(cm.exception_value))
 
     def test_booleans(self):
         self.assertParsedValue("foo = false", {"foo": False})

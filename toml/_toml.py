@@ -57,6 +57,8 @@ class LineInfo:
 
         in_quotes = False
         quote_token = None
+
+        # TODO: Rework into while, for better string parsing (quote/escapes)
         for i, char in enumerate(__line.lstrip()):
             # upon finding a comment (not in a quoted string), quit
             if char == Tokens.COMMENT and not in_quotes:
@@ -163,6 +165,29 @@ class Parser:
             # TODO: Remove comments before processing the line
             self._parse_line(i, line)
 
+    def _is_quoted(self, __val: str) -> bool:
+        """Check if a string is quoted."""
+        return __val[0] == __val[-1] and __val[0] in Tokens.QUOTES
+
+    def _sanitize_key(self, __key: str) -> str:
+        """Sanitize keys with quotes"""
+
+        parts = __key.split(".")
+        for i, raw_part in enumerate(parts):
+            # handle whitespace
+            clean_part = raw_part.strip()
+
+            # and quotes
+            if self._is_quoted(clean_part):
+                clean_part = clean_part[1:-1]
+
+            parts[i] = clean_part
+
+        final_key = ".".join(parts)
+        if self._is_quoted(final_key):
+            final_key = final_key[1:-1]
+        return final_key
+
     def _parse_value(self, __value: str, __line_info: Optional[LineInfo] = None) -> Any:
         """
         (Try) Convert a string into a value.
@@ -171,16 +196,25 @@ class Parser:
         """
 
         # quoted string, has to be first, to prevent casting it
-        if __value[0] in Tokens.QUOTES and __value[0] == __value[-1]:
-            return __value[1:-1]
+        if self._is_quoted(__value):
+            # remove quotes
+            parsed_str = __value[1:-1]
+
+            # handle triple quotes (remove extra ones)
+            if parsed_str[0] == __value[0]:
+                if (
+                    parsed_str[0] == parsed_str[1]
+                    == parsed_str[-2] == parsed_str[-1]
+                ):
+                    return parsed_str[2:-2]
+
+                raise TOMLError("Malformed string")
+
+            return parsed_str
 
         # integer
         if __value.isdigit():
             return int(__value)
-
-        # negative integer
-        if __value[0] == "-" and __value[1:].isdigit():
-            return -int(__value[1:])
 
         # float
         if (
@@ -190,19 +224,21 @@ class Parser:
         ):
             return float(__value)
 
-        # negative float
-        if (
-            __value.count(".") == 1
-            and __value[0] == "-"
-            and __value[1:].replace(".", "0", 1).isdigit()
-        ):
-            return -float(__value[1:])
-
         # bin/octal/hex literal
         if __value[0] == "0":
             specifier = __value[1].lower()
             base = {"b": 2, "o": 8, "x": 16}.get(specifier, 0)
             return int(__value, base)
+
+        # positive prefix, aka do nothing
+        if __value[0] == "+":
+            return self._parse_value(__value[1:])
+
+        # negative numbers
+        if __value[0] == "-":
+            # spec does not allow negative numbers with base prefix
+            if __value[1:3] not in ("0b", "0o", "0x"):
+                return -self._parse_value(__value[1:])
 
         # bool
         if __value in {"true", "false"}:
@@ -232,7 +268,7 @@ class Parser:
 
     def _parse_assignment(self, __line_info: LineInfo) -> None:
         split_at = __line_info.tokens[Tokens.EQUAL_SIGN][0]
-        _key = __line_info.line[:split_at].strip()
+        _key = self._sanitize_key(__line_info.line[:split_at].strip())
         _value = __line_info.line[split_at + 1 :].strip()
 
         key = f"{self._table}.{_key}" if self._table else _key
@@ -302,8 +338,8 @@ class Parser:
 
         # no equal sign => table assignment, ie: [table]
         else:
-            # remove "[" and "]"
-            self._table = info.line[1:-1]
+            # remove "[" and "]", handle quotes/dots
+            self._table = self._sanitize_key(info.line[1:-1])
 
 
 ##############

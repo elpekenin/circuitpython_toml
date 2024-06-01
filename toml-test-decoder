@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+
+import json
+import sys
+from pathlib import Path
+from typing import Any, TypedDict
+
+
+THIS = Path(__file__).parent
+sys.path.insert(0, str(THIS))
+import toml
+if toml.__author__ != "elpekenin":
+    sys.stdout.write("Picked wrong library, oops\n")
+    sys.exit(1)
+
+
+class TypedValue(TypedDict):
+    type: type
+    value: Any
+
+
+def type_name(val: Any) -> str:
+    type_ = type(val)
+    return {
+        int: "integer",
+        str: "string",
+    }.get(type_, type_.__name__)
+
+
+def val_repr(val: Any) -> str:
+    if isinstance(val, str):
+        return val
+
+    return str(val)
+
+
+def add_type(val: Any) -> TypedValue:
+    return {
+        "type": type_name(val),
+        "value": val_repr(val),
+    }
+
+
+def add_types_dict(data: dict) -> dict:
+    return {
+        key: add_types(val)
+        for key, val in data.items()
+    }
+
+def add_types_list(data: list) -> list:
+    return [
+        add_types(val)
+        for val in data
+    ]
+
+
+def add_types(data: Any):
+    if isinstance(data, dict):
+        return add_types_dict(data)
+
+    if isinstance(data, list):
+        return add_types_list(data)
+
+    return add_type(data)
+
+
+def main() -> int:
+    try:
+        parsed = toml.load(sys.stdin)
+    except toml.TOMLError as e:
+        sys.stderr.write(str(e))
+        sys.stderr.write("\n")
+        return 1
+    
+    typed = add_types(parsed._data)
+    json.dump(typed, sys.stdout)
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
