@@ -4,8 +4,12 @@ try:
 except ImportError:
     pass
 
+import warnings
 from io import StringIO
+
 from ._dotty import Dotty
+
+# TODO?: Move key warnings to Dotty's logic
 
 
 class TOMLError(Exception):
@@ -124,9 +128,6 @@ class ParsedLine:
 class Parser:
     """Get Python values out of strings."""
 
-    _SEPARATOR = "__"
-    """Used on Dotty to mark nesting."""
-
     @classmethod
     def string(cls, __value: str) -> tuple[str, str, int]:
         """
@@ -194,18 +195,18 @@ class Parser:
             raise TOMLError("String was open but not closed.")
 
     @classmethod
-    def key(cls, __key: str) -> str:
+    def key(cls, __key: str) -> list[str]:
         """
-        Sanitize keys with quotes, giving a Dotty-ready key.
+        Sanitize keys with quotes, giving the "path" to it.
         """
 
         # Note: The "__" here is Parser._SEPARATOR
         #         input | output
         #         ------|-------
-        #       foo.bar | foo__bar
-        #     "foo.bar" | foo.bar
-        # "foo.bar.baz" | foo.bar.baz
-        # "foo.bar".baz | foo.bar__baz  (is this possible)
+        #       foo.bar | ["foo", "bar"]
+        #     "foo.bar" | ["foo.bar"]
+        # "foo.bar.baz" | ["foo.bar.baz"]
+        # "foo.bar".baz | ["foo.bar", "baz"]
 
         parts = [None]
         length = len(__key)
@@ -236,7 +237,33 @@ class Parser:
             i += 1
 
         # remove the (potential) empty strings that got added
-        return cls._SEPARATOR.join(part for part in parts if part is not None)
+        clean = []
+        warn_dot, warn_empty = False, False
+        for part in parts:
+            if part is None:
+                continue
+
+            if "." in part:
+                warn_dot = True
+
+            if part == "":
+                warn_empty = True
+
+            clean.append(part)
+
+        if warn_dot:
+            warnings.warn(
+                "Keys with dots will be added to structure correctly, but you"
+                " will have to read them manually from `Dotty._data`"
+            )
+
+        if warn_empty:
+            warnings.warn(
+                "Empty keys will be added to structure correctly, but you"
+                " will have to read them manually from `Dotty._data`"
+            )
+
+        return clean
 
     @classmethod
     def value(cls, __value: str, __line_info: Optional[ParsedLine] = None) -> Any:
@@ -350,8 +377,8 @@ class Parser:
         Parse a whole TOML string.
         """
 
-        table = ""
-        data = Dotty(separator=cls._SEPARATOR)
+        table_name = []
+        data = Dotty()
 
         lines = __toml.replace("\r", "").split("\n")
         for i, raw_line in enumerate(lines, 1):
@@ -372,15 +399,16 @@ class Parser:
             if Syntax.is_assignment(parsed_line):
                 key, value = parsed_line.key_value()
 
-                dotty_key = cls.key(key)
-                final_key = f"{table}{cls._SEPARATOR}{dotty_key}" if table else dotty_key
+                *parts, last = cls.key(key)
+                parts = table_name + parts
 
-                data[final_key] = cls.value(value, parsed_line)
+                table = data._create(parts)
+                table[last] = cls.value(value, parsed_line)
 
             # no equal sign => table assignment, ie: [table]
             else:
                 # remove "[" and "]", handle quotes/dots
-                table = cls.key(parsed_line.line[1:-1]).replace(".", cls._SEPARATOR)
+                table_name = cls.key(parsed_line.line[1:-1])
 
         return data
 
@@ -454,24 +482,20 @@ def dumps(__data: Dotty | dict) -> str:
 
     # enclose on a dict, to easily find the "tables" on it
     if isinstance(__data, dict):
-        __data = Dotty(__data, fill_tables=True, separator=Parser._SEPARATOR)
+        __data = Dotty(__data, fill_tables=True)
+
+    def _order(x):
+        """Little helper to sort the tables."""
+        return (
+            # len cant be -1 on a string, this ensures root elements being first
+            -1
+            if x == __data._BASE
+            else len(x)
+        )
 
     out = StringIO()
-    for table_parts in __data.tables:
-        if table_parts != __data._BASE:
-            # convert the parts into a full name
-            table_name = ""
-            for part in table_parts:
-                # an empty string is a valid value...
-                if part == "":
-                    part = '""'
-
-                table_name += part + __data._separator
-            table_name = table_name.rstrip(__data._separator)
-
-            table = __data[table_name]
-        else:
-            table = __data[__data._BASE]
+    for table_name in sorted(__data.tables, key=_order):
+        table: dict = __data[table_name]
 
         # special case for tables without direct childs (ie: only nested ones)
         # skip them
@@ -479,7 +503,10 @@ def dumps(__data: Dotty | dict) -> str:
             continue
 
         # special case for items at root of the dict
-        if table_parts != __data._BASE:
+        if table_name != __data._BASE:
+            # apparently an empty string is a valid name...
+            if table_name == "":
+                table_name = '""'
             out.write(f"[{table_name}]\n")
 
         for key, value in table.items():
@@ -492,6 +519,7 @@ def dumps(__data: Dotty | dict) -> str:
                 value = f'"{value}"'
 
             # if key contains a dot, quote it to maintain the data format
+            # if empty, make a string with quotes on it, to achieve the same
             if "." in key or key == "":
                 key = f'"{key}"'
 

@@ -62,10 +62,8 @@ class Syntax(unittest.TestCase):
 class ParseMixin:
     def assertParsedValue(self, file: str, expected: dict):
         """Common logic to check the parsed value(s)."""
-        self.assertEqual(
-            toml.loads(file),
-            Dotty(expected, separator=toml._toml.Parser._SEPARATOR)
-        )
+        self.assertEqual(toml.loads(file), Dotty(expected))
+
 
 class Parse(unittest.TestCase, ParseMixin):
     """Values are parsed correctly."""
@@ -184,8 +182,8 @@ class Issues(unittest.TestCase, ParseMixin):
         self.assertNotIn("foo.bar.baz.value", data)
 
         # neither are tables tracked
-        self.assertNotIn(["foo", "bar"], data.tables)
-        self.assertNotIn(["foo", "bar", "baz"], data.tables)
+        self.assertNotIn("foo.bar", data.tables)
+        self.assertNotIn("foo.bar.baz", data.tables)
 
         with self.assertRaises(KeyError):
             data["foo.bar.bar.value"]
@@ -204,7 +202,7 @@ class Issues(unittest.TestCase, ParseMixin):
         with self.assertRaises(KeyError):
             data["foo.bar"]
 
-        self.assertNotIn(["foo"], data.tables)
+        self.assertNotIn("foo", data.tables)
 
     def test_5(self):
         self.assertParsedValue(
