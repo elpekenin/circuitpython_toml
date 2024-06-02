@@ -10,13 +10,21 @@ except ImportError:
 class Dotty:
     """Minimal wrapper around a dict, adding support for `key.key` indexing."""
 
-    tables: set[str]
+    _tables: set[str]
     """Stores the tables on this DottyDict."""
 
     _BASE = object()
     """Special id to return the base dict."""
 
-    def __init__(self, __data: Optional[dict] = None, *, fill_tables: bool = False):
+    __DEFAULT_SEPARATOR = "."
+
+    def __init__(
+        self,
+        __data: Optional[dict] = None,
+        *,
+        fill_tables: bool = False,
+        separator: str = __DEFAULT_SEPARATOR,
+    ):
         """Create a new instance, either empty or around existing data."""
 
         if __data is None:
@@ -26,23 +34,24 @@ class Dotty:
             raise ValueError("data to be wrapped has to be a dict.")
 
         self._data = __data
+        self._separator = separator
 
         # set ensures no duplications
         # shouldnt happen anyway, due to _get_or_create's logic
-        self.tables = set()
+        self._tables = set()
 
         # _BASE => items at root of the dict
-        self.tables.add(self._BASE)
+        self._tables.add(self._BASE)
 
         if fill_tables:
             def _fill(key: str, value: object) -> None:
                 """Helper to iterate nested dicts"""
 
                 if isinstance(value, dict):
-                    self.tables.add(key)
+                    self._tables.add(key)
 
                     for k, v in value.items():
-                        _fill(f"{key}.{k}", v)
+                        _fill(f"{key}{self._separator}{k}", v)
 
             for k, v in self._data.items():
                 _fill(k, v)
@@ -51,19 +60,55 @@ class Dotty:
         """String just shows the dict inside."""
         return str(self._data)
 
+    @property
+    def tables(self) -> list[list[str]]:
+        """
+        Return a list of "paths" to nested tables.
+
+        e.g. with separator "__" and `self._tables = "nested__table"`
+        this will return a two-element list (an entry for each table)
+        where each entry will be the list of breadcrumbs:
+        [
+            ["nested"],
+            ["nested", "table"]
+        ]
+        """
+
+        ret = [self._BASE]
+        for table in self._tables:
+            if table == self._BASE:
+                continue
+
+            ret.append(table.split(self._separator))
+
+        def _order(x):
+            """Little helper to sort the tables."""
+            return (
+                # len cant be -1 on a string, this ensures root elements being first
+                -1
+                if x == self._BASE
+                else len(str(x))
+            )
+
+        return sorted(ret, key=_order)
+
     def __repr__(self):
         """Repr shows data and tables"""
-        tables = self.tables.copy()
+        separator = (
+            f", separator={self._separator}"
+            if self._separator != self.__DEFAULT_SEPARATOR
+            else ""
+        )
+        tables = self.tables
         tables.remove(self._BASE)
         table_str = (
             f", tables={tables}"
             if tables
             else ""
         )
-        return f"<Dotty data={self._data}{table_str}>"
+        return f"<Dotty data={self._data}{separator}{table_str}>"
 
-    @staticmethod
-    def split(key: str) -> tuple[list[str], str]:
+    def split(self, key: str) -> tuple[list[str], str]:
         """
         Splits a key into last element and rest of them.
 
@@ -103,8 +148,8 @@ class Dotty:
         """Helper function that creates the nested dict if not present."""
 
         if k not in item and isinstance(item, dict):
-            # Add to tables             v get rid of heading dot(s)
-            self.tables.add(global_key.lstrip("."))
+            # Add to tables             v get rid of heading separator(s)
+            self._tables.add(global_key.lstrip(self._separator))
 
             item[k] = {}
 
@@ -124,7 +169,7 @@ class Dotty:
 
         table = self._data
         for k in keys:
-            global_key += "." + k
+            global_key += self._separator + k
             table = self._get_or_create(table, k, global_key)
 
         table[last] = __value
@@ -178,15 +223,15 @@ class Dotty:
             if parent_table:
                 parent_table.pop(keys[-1])
 
-            self.tables.remove(".".join(keys))
+            self._tables.remove(self._separator.join(keys))
 
         # if key was a table itself, remove it (and children) from set
-        if __key in self.tables:
-            self.tables.remove(__key)
+        if __key in self._tables:
+            self._tables.remove(__key)
 
-            for table in self.tables.copy():
+            for table in self._tables.copy():
                 if (
                     table != self._BASE
-                    and table.startswith(f"{__key}.")
+                    and table.startswith(f"{__key}{self._separator}")
                 ):
-                    self.tables.remove(table)
+                    self._tables.remove(table)

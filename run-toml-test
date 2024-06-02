@@ -109,7 +109,6 @@ skip=(
     -skip 'valid/comment/tricky'
     -skip 'valid/spec/string-1'
     -skip 'valid/spec/string-3'
-    -skip 'valid/key/quoted-dots'
     -skip 'valid/key/escapes'
     -skip 'valid/key/quoted-unicode'
     -skip 'valid/key/space'
@@ -268,6 +267,11 @@ skip=(
     # -skip 'invalid/table/overwrite-with-deep-table'
     # -skip 'invalid/table/super-twice'
 )
+
+if [[ "$1" == noskip ]]
+then
+    skip=(-print-skip)
+fi
 
 THIS=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 toml-test -color never ${skip[@]} ${THIS}/toml-test-decoder > ${OUTPUT} 2>&1

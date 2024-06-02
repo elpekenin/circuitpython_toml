@@ -1,6 +1,13 @@
 Changelog
 =========
 
+Version 0.1.9 (2nd Jun 2024)
+----------------------------
+
+* Slight refactor of the parser, get closer to spec compiance
+  * Parse inline (but not multiline) triple-quoted strings (`"""` and `'''`)
+  * Handle quoted keys as expected (`"key.value" = 0` != `key.value = 0`)
+
 
 Version 0.1.8 (1st Jun 2024)
 ----------------------------
