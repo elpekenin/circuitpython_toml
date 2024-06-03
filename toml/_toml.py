@@ -4,7 +4,6 @@ try:
 except ImportError:
     pass
 
-import warnings
 from io import StringIO
 
 from ._dotty import Dotty
@@ -237,33 +236,7 @@ class Parser:
             i += 1
 
         # remove the (potential) empty strings that got added
-        clean = []
-        warn_dot, warn_empty = False, False
-        for part in parts:
-            if part is None:
-                continue
-
-            if "." in part:
-                warn_dot = True
-
-            if part == "":
-                warn_empty = True
-
-            clean.append(part)
-
-        if warn_dot:
-            warnings.warn(
-                "Keys with dots will be added to structure correctly, but you"
-                " will have to read them manually from `Dotty._data`"
-            )
-
-        if warn_empty:
-            warnings.warn(
-                "Empty keys will be added to structure correctly, but you"
-                " will have to read them manually from `Dotty._data`"
-            )
-
-        return clean
+        return [part for part in parts if part is not None]
 
     @classmethod
     def value(cls, __value: str, __line_info: Optional[ParsedLine] = None) -> Any:
@@ -402,7 +375,7 @@ class Parser:
                 *parts, last = cls.key(key)
                 parts = table_name + parts
 
-                table = data._create(parts)
+                table = data.get_or_create_dict(parts)
                 table[last] = cls.value(value, parsed_line)
 
             # no equal sign => table assignment, ie: [table]

@@ -6,6 +6,8 @@ try:
 except ImportError:
     pass
 
+import warnings
+
 
 class Dotty:
     """Minimal wrapper around a dict, adding support for `key.key` indexing."""
@@ -99,26 +101,51 @@ class Dotty:
 
         return table[last]
 
-    def _get_or_create(self, item: dict, k: str, global_key: str) -> dict:
-        """Helper function that creates the nested dict if not present."""
-
-        if k not in item and isinstance(item, dict):
-            # Add to tables             v get rid of heading dot(s)
-            self.tables.add(global_key.lstrip("."))
-
-            item[k] = {}
-
-        return item[k]
-
-    def _create(self, keys: list[str]) -> dict:
-        """Iterate the list of keys to create the nested table."""
+    def get_or_create_dict(self, parts: list[str]) -> dict:
+        """
+        Helper function to get a nested dict from its "path", creates
+        parent(s) if they are not already present.
+        """
 
         global_key = ""
-
         table = self._data
-        for k in keys:
-            global_key += "." + k
-            table = self._get_or_create(table, k, global_key)
+
+        warn_dot, warn_empty = False, False
+        for part in parts:
+            if not isinstance(table, dict):
+                raise ValueError(
+                    "Something went wrong on get_or_create_dict."
+                    " This is not a dict."
+                )
+
+            if "." in part:
+                warn_dot = True
+
+            if part == "":
+                warn_empty = True
+
+            if part not in table:
+                # Add to set of tables         v get rid of heading dot(s)
+                global_key += "." + part  #    v
+                self.tables.add(global_key.lstrip("."))
+
+                # create new dict
+                table[part] = {}
+
+            # update "location"
+            table = table[part]
+
+        if warn_dot:
+            warnings.warn(
+                "Keys with dots will be added to structure correctly, but you"
+                " will have to read them manually from `Dotty._data`"
+            )
+
+        if warn_empty:
+            warnings.warn(
+                "Empty keys will be added to structure correctly, but you"
+                " will have to read them manually from `Dotty._data`"
+            )
 
         return table
 
@@ -133,7 +160,7 @@ class Dotty:
 
         keys, last = self.split(__key)
 
-        table = self._create(keys)
+        table = self.get_or_create_dict(keys)
 
         table[last] = __value
 
