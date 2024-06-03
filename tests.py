@@ -172,7 +172,6 @@ class Issues(unittest.TestCase, ParseMixin):
                     }
                 }
             },
-            fill_tables=True
         )
         del data["foo.bar"]
 
@@ -180,10 +179,6 @@ class Issues(unittest.TestCase, ParseMixin):
         self.assertNotIn("foo.bar", data)
         self.assertNotIn("foo.bar.baz", data)
         self.assertNotIn("foo.bar.baz.value", data)
-
-        # neither are tables tracked
-        self.assertNotIn("foo.bar", data.tables)
-        self.assertNotIn("foo.bar.baz", data.tables)
 
         with self.assertRaises(KeyError):
             data["foo.bar.bar.value"]
@@ -195,14 +190,11 @@ class Issues(unittest.TestCase, ParseMixin):
                     "bar": 0
                 }
             },
-            fill_tables=True
         )
         del data["foo.bar"]
 
         with self.assertRaises(KeyError):
             data["foo.bar"]
-
-        self.assertNotIn("foo", data.tables)
 
     def test_5(self):
         self.assertParsedValue(
