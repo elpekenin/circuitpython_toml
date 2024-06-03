@@ -454,54 +454,58 @@ def dumps(__data: Dotty | dict) -> str:
         raise TOMLError("dumping is only implemented for dict-like objects")
 
     # enclose on a dict, to easily find the "tables" on it
-    if isinstance(__data, dict):
-        __data = Dotty(__data, fill_tables=True)
+    if isinstance(__data, Dotty):
+        __data = __data._data
 
-    def _order(x):
-        """Little helper to sort the tables."""
+    def order(kv):
+        """Custom function to dump basic keys before nested tables."""
+
+        k, v = kv
         return (
-            # len cant be -1 on a string, this ensures root elements being first
-            -1
-            if x == __data._BASE
-            else len(x)
+            1000
+            if isinstance(v, dict)
+            else len(k)
         )
 
-    out = StringIO()
-    for table_name in sorted(__data.tables, key=_order):
-        table: dict = __data[table_name]
+    def dump_table(
+        buffer: StringIO,
+        table: dict,
+        key_parts: list[str]
+    ) -> StringIO:
+        """Helper to iterate the tree. Returns the buffer for convenience."""
 
-        # special case for tables without direct childs (ie: only nested ones)
-        # skip them
-        if all(map(lambda x: isinstance(x, dict), table.values())):
-            continue
-
-        # special case for items at root of the dict
-        if table_name != __data._BASE:
-            # apparently an empty string is a valid name...
-            if table_name == "":
-                table_name = '""'
-            out.write(f"[{table_name}]\n")
-
-        for key, value in table.items():
-            # will be handled by another iteration
-            if isinstance(value, dict):
-                continue
-
-            # enclose string in quotes to prevent casting it when reading
-            if isinstance(value, str):
-                value = f'"{value}"'
-
-            # if key contains a dot, quote it to maintain the data format
-            # if empty, make a string with quotes on it, to achieve the same
+        for key, value in sorted(table.items(), key=order):
             if "." in key or key == "":
-                key = f'"{key}"'
+                # quote it, for valid value
+                key = repr(key)
 
-            out.write(f"{key}={value}\n")
+            if isinstance(value, dict):
+                # update global key
+                key_parts.append(key)
+                
+                # write table header
+                table_name = ".".join(key_parts)
+                if table_name:
+                    # newline before, for readability
+                    buffer.write(f"\n[{table_name}]\n")
 
-        # empty line for readability
-        out.write("\n")
+                # handle child
+                dump_table(buffer, value, key_parts)
 
-    return out.getvalue()
+                # undo addition
+                key_parts.pop()
+
+            else:
+                if isinstance(value, str):
+                    # quote it, for valid value
+                    value = repr(value)
+
+                buffer.write(f"{key} = {value}\n")
+
+        return buffer
+
+    # get going from base table
+    return dump_table(StringIO(), __data, []).getvalue()
 
 
 def dump(__data: Dotty | dict, __file: "File"):

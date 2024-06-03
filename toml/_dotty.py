@@ -12,13 +12,10 @@ import warnings
 class Dotty:
     """Minimal wrapper around a dict, adding support for `key.key` indexing."""
 
-    tables: set[str]
-    """Stores the tables on this DottyDict."""
-
     _BASE = object()
     """Special id to return the base dict."""
 
-    def __init__(self, __data: Optional[dict] = None, *, fill_tables: bool = False):
+    def __init__(self, __data: Optional[dict] = None):
         """Create a new instance, either empty or around existing data."""
 
         if __data is None:
@@ -29,40 +26,13 @@ class Dotty:
 
         self._data = __data
 
-        # set ensures no duplications
-        # shouldnt happen anyway, due to _get_or_create's logic
-        self.tables = set()
-
-        # _BASE => items at root of the dict
-        self.tables.add(self._BASE)
-
-        if fill_tables:
-            def _fill(key: str, value: object) -> None:
-                """Helper to iterate nested dicts"""
-
-                if isinstance(value, dict):
-                    self.tables.add(key)
-
-                    for k, v in value.items():
-                        _fill(f"{key}.{k}", v)
-
-            for k, v in self._data.items():
-                _fill(k, v)
-
     def __str__(self):
         """String just shows the dict inside."""
         return str(self._data)
 
     def __repr__(self):
-        """Repr shows data and tables"""
-        tables = self.tables.copy()
-        tables.remove(self._BASE)
-        table_str = (
-            f", tables={tables}"
-            if tables
-            else ""
-        )
-        return f"<Dotty data={self._data}{table_str}>"
+        """Repr shows data"""
+        return f"<Dotty data={self._data}>"
 
     @staticmethod
     def split(key: str) -> tuple[list[str], str]:
@@ -125,9 +95,7 @@ class Dotty:
                 warn_empty = True
 
             if part not in table:
-                # Add to set of tables         v get rid of heading dot(s)
-                global_key += "." + part  #    v
-                self.tables.add(global_key.lstrip("."))
+                global_key += "." + part  #
 
                 # create new dict
                 table[part] = {}
@@ -152,10 +120,6 @@ class Dotty:
     def __setitem__(self, __key: str, __value: object):
         """
         Syntactic sugar to set a nested item.
-
-        Known limitation, setting dicts doesn't update `self.tables`.
-        ie, expect issues with code like:
-        >>> dotty["foo"] = {"bar": baz}
         """
 
         keys, last = self.split(__key)
@@ -212,16 +176,3 @@ class Dotty:
         if len(table) == 0:
             if parent_table:
                 parent_table.pop(keys[-1])
-
-            self.tables.remove(".".join(keys))
-
-        # if key was a table itself, remove it (and children) from set
-        if __key in self.tables:
-            self.tables.remove(__key)
-
-            for table in self.tables.copy():
-                if (
-                    table != self._BASE
-                    and table.startswith(f"{__key}.")
-                ):
-                    self.tables.remove(table)
