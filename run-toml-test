@@ -13,137 +13,97 @@ OUTPUT=toml-test.out
 #       after it gets implemented (some other "masked" issue)
 
 skip=(
-    # multiline arrays not supported
-    -skip 'valid/array/array'
-    -skip 'valid/array/mixed-string-table'
-    -skip 'valid/array/nested-double'
-    -skip 'valid/array/string-quote-comma'
-    -skip 'valid/array/string-with-comma'
-    -skip 'valid/array/string-with-comma-2'
-    -skip 'valid/array/string-quote-comma-2'
-    -skip 'valid/array/trailing-comma'
-    -skip 'valid/comment/everywhere'
-    -skip 'valid/spec/array-0'
-    -skip 'valid/spec/array-1'
-
-    # inline tables not supported
-    -skip 'valid/array/nested-inline-table'
-    -skip 'valid/array/table-array-string-backslash'
-    -skip 'valid/inline-table/array'
-    -skip 'valid/inline-table/array-values'
-    -skip 'valid/inline-table/bool'
-    -skip 'valid/inline-table/empty'
-    -skip 'valid/inline-table/end-in-bool'
-    -skip 'valid/inline-table/inline-table'
-    -skip 'valid/inline-table/key-dotted-1'
-    -skip 'valid/inline-table/key-dotted-2'
-    -skip 'valid/inline-table/key-dotted-3'
-    -skip 'valid/inline-table/key-dotted-4'
-    -skip 'valid/inline-table/key-dotted-5'
-    -skip 'valid/inline-table/key-dotted-6'
-    -skip 'valid/inline-table/key-dotted-7'
-    -skip 'valid/inline-table/multiline'
-    -skip 'valid/inline-table/nest'
-    -skip 'valid/inline-table/spaces'
-    -skip 'valid/key/start'
-    -skip 'valid/spec/inline-table-0'
-    -skip 'valid/spec/inline-table-2'
-
-    # inf/nan not supported
-    -skip 'valid/comment/after-literal-no-ws'
-    -skip 'valid/float/inf-and-nan'
-    -skip 'valid/spec/float-2'
-
-    # datetime not supported
-    -skip 'valid/datetime/datetime'
-    -skip 'valid/datetime/edge'
-    -skip 'valid/datetime/leap-year'
-    -skip 'valid/datetime/local'
-    -skip 'valid/datetime/local-date'
-    -skip 'valid/datetime/local-time'
-    -skip 'valid/datetime/milliseconds'
-    -skip 'valid/datetime/timezone'
-    -skip 'valid/example'
-    -skip 'valid/spec-example-1'
-    -skip 'valid/spec-example-1-compact'
-    -skip 'valid/spec/local-date-0'
-    -skip 'valid/spec/local-date-time-0'
-    -skip 'valid/spec/local-time-0'
-    -skip 'valid/spec/offset-date-time-0'
-    -skip 'valid/spec/offset-date-time-1'
-    -skip 'valid/spec/table-7'
-
-    # exponents not supported
-    -skip 'valid/float/exponent'
-    -skip 'valid/float/zero'
-    -skip 'valid/spec/float-0'
-
-    # numbers with underscores not supported
-    -skip 'valid/float/max-int'
-    -skip 'valid/float/underscore'
-    -skip 'valid/integer/float64-max'
-    -skip 'valid/integer/underscore'
-    -skip 'valid/spec/float-1'
-    -skip 'valid/spec/integer-1'
-
-    # [[implicit-array]] (or whatever this is called) not supported
-    -skip 'valid/array/array-subtables'
-    -skip 'valid/array/open-parent-table'
-    -skip 'valid/key/dotted-4'
-    -skip 'valid/spec/array-of-tables-0'
-    -skip 'valid/spec/array-of-tables-1'
-    -skip 'valid/spec/array-of-tables-2'
-    -skip 'valid/table/array-implicit'
-    -skip 'valid/table/array-implicit-and-explicit-after'
-    -skip 'valid/table/array-many'
-    -skip 'valid/table/array-nest'
-    -skip 'valid/table/array-one'
-    -skip 'valid/table/array-table-array'
-    -skip 'valid/table/array-within-dotted'
-
-    # handling of strings is tricky
-    #   - triple quotes
-    #   - unicode
-    #   - escape sequences
-    #   - "quoted.key" is implicitly converted to table instead of dotted key
-    -skip 'valid/comment/tricky'
-    -skip 'valid/spec/string-1'
-    -skip 'valid/spec/string-3'
-    -skip 'valid/key/escapes'
-    -skip 'valid/key/quoted-unicode'
-    -skip 'valid/key/space'
-    -skip 'valid/spec/keys-1'
-    -skip 'valid/spec/keys-3'
-    -skip 'valid/spec/string-0'
-    -skip 'valid/spec/string-2'
-    -skip 'valid/spec/string-4'
-    -skip 'valid/spec/string-6'
-    -skip 'valid/spec/table-2'
-    -skip 'valid/string/ends-in-whitespace-escape'
-    -skip 'valid/string/multiline'
-    -skip 'valid/string/multiline-empty'
-    -skip 'valid/string/multiline-escaped-crlf'
-    -skip 'valid/string/multiline-quotes'
-    -skip 'valid/string/raw-multiline'
-    -skip 'valid/string/start-mb'
-    -skip 'valid/string/unicode-escape'
-    -skip 'valid/string/escape-tricky'
-    -skip 'valid/string/escaped-escape'
-    -skip 'valid/string/escapes'
-    -skip 'valid/string/nl'
-    -skip 'valid/string/quoted-unicode'
-
-    # we do not eagerly create empty tables
-    -skip 'valid/spec/table-0'
-    -skip 'valid/spec/table-3'
-    -skip 'valid/spec/table-4'
-    -skip 'valid/spec/table-5'
-    -skip 'valid/spec/table-6'
-    -skip 'valid/table/empty'
-
-    # =====
-    # TODO: Check these
-
+    -skip 'valid/array/array'  # multiline array + time
+    -skip 'valid/array/array-subtables'  # table array
+    -skip 'valid/array/mixed-string-table'  # multiline array
+    -skip 'valid/array/nested-double'  # multiline array
+    -skip 'valid/array/nested-inline-table'  # inline table
+    -skip 'valid/array/open-parent-table'  # table array
+    -skip 'valid/array/string-quote-comma'  # multiline array
+    -skip 'valid/array/string-quote-comma-2'  # escape within array 
+    -skip 'valid/array/string-with-comma'  # multiline array
+    -skip 'valid/array/string-with-comma-2'  # multiline array + multinine str
+    -skip 'valid/array/table-array-string-backslash'  # inline table
+    -skip 'valid/array/trailing-comma'  # multiline array
+    -skip 'valid/comment/everywhere'  # multiline array
+    -skip 'valid/comment/tricky'  # multiline str + scientific + multiline array + inline table
+    -skip 'valid/datetime/datetime'  # time
+    -skip 'valid/datetime/edge'  # time
+    -skip 'valid/datetime/leap-year'  # time
+    -skip 'valid/datetime/local'  # time
+    -skip 'valid/datetime/local-date'  # time
+    -skip 'valid/datetime/local-time'  # time
+    -skip 'valid/datetime/milliseconds'  # time
+    -skip 'valid/datetime/timezone'  # time
+    -skip 'valid/example'  # time
+    -skip 'valid/float/exponent'  # scientific
+    -skip 'valid/float/underscore'  # underscore
+    -skip 'valid/float/zero'  # scientific
+    -skip 'valid/inline-table/array'  # inline table + multiline array
+    -skip 'valid/inline-table/array-values'  # inline table + multiline array
+    -skip 'valid/inline-table/bool'  # inline table
+    -skip 'valid/inline-table/empty'  # inline table
+    -skip 'valid/inline-table/end-in-bool'  # inline table
+    -skip 'valid/inline-table/inline-table'  # inline table
+    -skip 'valid/inline-table/key-dotted-1'  # inline table
+    -skip 'valid/inline-table/key-dotted-2'  # inline table
+    -skip 'valid/inline-table/key-dotted-3'  # inline table
+    -skip 'valid/inline-table/key-dotted-4'  # inline table + table array
+    -skip 'valid/inline-table/key-dotted-5'  # inline table
+    -skip 'valid/inline-table/key-dotted-6'  # inline table + multiline array
+    -skip 'valid/inline-table/key-dotted-7'  # inline table + multiline array
+    -skip 'valid/inline-table/multiline'  # inline table + multiline str
+    -skip 'valid/inline-table/nest'  # inline table
+    -skip 'valid/inline-table/spaces'  # inline table  + multiline array
+    -skip 'valid/key/dotted-4'  # table array
+    -skip 'valid/key/escapes'  # str
+    -skip 'valid/key/quoted-unicode'  # str
+    -skip 'valid/key/start'  # inline table
+    -skip 'valid/spec-example-1'  # time + multiline array
+    -skip 'valid/spec-example-1-compact'  # time + multiline array
+    -skip 'valid/spec/array-0'  # multiline array
+    -skip 'valid/spec/array-1'  # multiline array
+    -skip 'valid/spec/array-of-tables-0'  # table array + eager creation
+    -skip 'valid/spec/array-of-tables-1'  # table array
+    -skip 'valid/spec/array-of-tables-2'  # multiline array + inline table
+    -skip 'valid/spec/float-0'  # scientific
+    -skip 'valid/spec/inline-table-0'  # inline table
+    -skip 'valid/spec/inline-table-2'  # inline table
+    -skip 'valid/spec/integer-1'  # underscore
+    -skip 'valid/spec/local-date-0'  # time
+    -skip 'valid/spec/local-date-time-0'  # time
+    -skip 'valid/spec/local-time-0'  # time
+    -skip 'valid/spec/offset-date-time-0'  # time
+    -skip 'valid/spec/offset-date-time-1'  # time
+    -skip 'valid/spec/string-0'  # str
+    -skip 'valid/spec/string-1'  # multiline str
+    -skip 'valid/spec/string-3'  # multiline str
+    -skip 'valid/spec/string-4'  # escape (?)
+    -skip 'valid/spec/string-5'  # str
+    -skip 'valid/spec/string-6'  # multiline str
+    -skip 'valid/spec/string-7'  # str
+    -skip 'valid/spec/table-7'  # time
+    -skip 'valid/string/ends-in-whitespace-escape'  # multiline
+    -skip 'valid/string/escape-tricky'  # str
+    -skip 'valid/string/escapes'  # str
+    -skip 'valid/string/multiline'  # multiline str
+    -skip 'valid/string/multiline-empty'  # multiline str
+    -skip 'valid/string/multiline-escaped-crlf'  # multiline str
+    -skip 'valid/string/multiline-quotes'  # multiline str
+    -skip 'valid/string/nl'  # str
+    -skip 'valid/string/quoted-unicode'  # str
+    -skip 'valid/string/raw'  # str
+    -skip 'valid/string/raw-multiline'  # multiline str
+    -skip 'valid/string/start-mb'  # multiline str
+    -skip 'valid/string/unicode-escape'  # str
+    -skip 'valid/table/array-implicit'  # table array
+    -skip 'valid/table/array-implicit-and-explicit-after'  # table array
+    -skip 'valid/table/array-many'  # table array
+    -skip 'valid/table/array-nest'  # table array
+    -skip 'valid/table/array-one'  # table array
+    -skip 'valid/table/array-table-array'   # table array
+    -skip 'valid/table/array-within-dotted'   # table array
+    # -----
     # -skip 'invalid/array/double-comma-1'
     # -skip 'invalid/array/double-comma-2'
     # -skip 'invalid/array/extend-defined-aot'
@@ -187,17 +147,26 @@ skip=(
     # -skip 'invalid/encoding/bad-utf8-in-string-literal'
     # -skip 'invalid/float/leading-point'
     # -skip 'invalid/float/leading-point-neg'
+    # -skip 'invalid/float/leading-point-plus'
     # -skip 'invalid/float/leading-zero'
     # -skip 'invalid/float/leading-zero-neg'
+    # -skip 'invalid/float/leading-zero-plus'
     # -skip 'invalid/float/trailing-point'
     # -skip 'invalid/float/trailing-point-min'
+    # -skip 'invalid/float/trailing-point-plus'
     # -skip 'invalid/integer/capital-bin'
     # -skip 'invalid/integer/capital-hex'
     # -skip 'invalid/integer/capital-oct'
+    # -skip 'invalid/integer/double-sign-nex'
+    # -skip 'invalid/integer/double-sign-plus'
     # -skip 'invalid/integer/leading-zero-1'
     # -skip 'invalid/integer/leading-zero-2'
     # -skip 'invalid/integer/leading-zero-3'
     # -skip 'invalid/integer/leading-zero-sign-1'
+    # -skip 'invalid/integer/leading-zero-sign-2'
+    # -skip 'invalid/integer/positive-bin'
+    # -skip 'invalid/integer/positive-hex'
+    # -skip 'invalid/integer/positive-oct'
     # -skip 'invalid/integer/us-after-bin'
     # -skip 'invalid/integer/us-after-hex'
     # -skip 'invalid/integer/us-after-oct'
@@ -209,7 +178,6 @@ skip=(
     # -skip 'invalid/key/duplicate-keys-2'
     # -skip 'invalid/key/duplicate-keys-3'
     # -skip 'invalid/key/duplicate-keys-4'
-    # -skip 'invalid/key/empty'
     # -skip 'invalid/key/escape'
     # -skip 'invalid/key/open-bracket'
     # -skip 'invalid/key/partial-quoted'
@@ -217,12 +185,12 @@ skip=(
     # -skip 'invalid/key/special-character'
     # -skip 'invalid/key/start-bracket'
     # -skip 'invalid/key/start-dot'
-    # -skip 'invalid/spec/keys-2'
+    # -skip 'invalid/spec/table-9-0'
+    # -skip 'invalid/spec/table-9-1'
     # -skip 'invalid/string/bad-byte-escape'
     # -skip 'invalid/string/bad-concat'
     # -skip 'invalid/string/bad-escape-1'
     # -skip 'invalid/string/bad-escape-2'
-    # -skip 'invalid/string/bad-escape-3'
     # -skip 'invalid/string/bad-hex-esc-1'
     # -skip 'invalid/string/bad-hex-esc-2'
     # -skip 'invalid/string/bad-hex-esc-3'
@@ -246,7 +214,6 @@ skip=(
     # -skip 'invalid/string/multiline-bad-escape-1'
     # -skip 'invalid/string/multiline-bad-escape-2'
     # -skip 'invalid/string/multiline-bad-escape-3'
-    # -skip 'invalid/string/multiline-bad-escape-4'
     # -skip 'invalid/table/append-to-array-with-dotted-keys'
     # -skip 'invalid/table/append-with-dotted-keys-1'
     # -skip 'invalid/table/append-with-dotted-keys-2'
@@ -256,16 +223,23 @@ skip=(
     # -skip 'invalid/table/array-no-close-2'
     # -skip 'invalid/table/duplicate'
     # -skip 'invalid/table/duplicate-key-dotted-array'
+    # -skip 'invalid/table/duplicate-key-dotted-table'
+    # -skip 'invalid/table/duplicate-key-dotted-table2'
     # -skip 'invalid/table/duplicate-table-array'
     # -skip 'invalid/table/duplicate-table-array2'
     # -skip 'invalid/table/empty'
     # -skip 'invalid/table/empty-implicit-table'
+    # -skip 'invalid/table/llbrace'
     # -skip 'invalid/table/nested-brackets-close'
     # -skip 'invalid/table/nested-brackets-open'
     # -skip 'invalid/table/overwrite-array-in-parent'
     # -skip 'invalid/table/overwrite-bool-with-array'
     # -skip 'invalid/table/overwrite-with-deep-table'
+    # -skip 'invalid/table/redefine-2'
+    # -skip 'invalid/table/redefine-3'
+    # -skip 'invalid/table/rrbrace'
     # -skip 'invalid/table/super-twice'
+    # -skip 'invalid/table/whitespace'
 )
 
 if [[ "$1" == noskip ]]

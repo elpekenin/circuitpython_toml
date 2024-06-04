@@ -133,7 +133,7 @@ class Parse(unittest.TestCase, ParseMixin):
         We want parser to see the actual backslash, it has to be escaped too.
         """
         self.assertParsedValue("foo = 'bar\\\"baz'", {"foo": "bar\"baz"})
-        self.assertParsedValue("foo = '''bar\\''''", {"foo": "bar'"})
+        self.assertParsedValue('foo = """bar\\""""', {"foo": 'bar"'})
 
     def test_dotted_keys(self):
         """Check that dots on quoted keys are parsed as expected."""
