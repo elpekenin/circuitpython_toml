@@ -1,6 +1,6 @@
 try:
     # types are needed on compyter
-    from typing import Any, Optional
+    from typing import Any, Optional, Union
 except ImportError:
     pass
 
@@ -72,7 +72,7 @@ class Tokens:
 
         escaped = string[0]
 
-        replacement = REPLACEMENTS.get(escaped)
+        replacement = REPLACEMENTS.get(escaped, None)
         if replacement is not None:
             return replacement, 1
 
@@ -109,13 +109,13 @@ class ParsedLine:
 
     __repr__ = __str__
 
-    def __init__(self, __line: str):
+    def __init__(self, line: str):
         self.line = ""
         self.tokens = {t: [] for t in Tokens.ALL}
 
         keep_escape = False
 
-        stripped = __line.strip()
+        stripped = line.strip()
         length = len(stripped)
 
         i = 0
@@ -176,7 +176,7 @@ class Parser:
     @classmethod
     def string(
         cls,
-        __value: str,
+        value: str,
         *,
         keep_escape: bool = False
     ) -> tuple[str, str, int]:
@@ -198,7 +198,7 @@ class Parser:
         i = 0
 
         for token in Tokens.QUOTES:
-            sliced = __value[i : i+len(token)]
+            sliced = value[i : i+len(token)]
             if sliced == token:
                 # opening quote
                 if quote_token is None:
@@ -218,17 +218,17 @@ class Parser:
         else:
             return quote_token, string, i
 
-        length = len(__value)
+        length = len(value)
         while i < length:
-            char = __value[i]
+            char = value[i]
 
             if char == Tokens.BACKSLASH:
                 i += 1  # backslash itself
 
-                replacement, offset = Tokens.escaped_char(__value[i:])
+                replacement, offset = Tokens.escaped_char(value[i:])
 
                 if keep_escape:
-                    string += "\\" + __value[i : i+offset]
+                    string += "\\" + value[i : i+offset]
                 else:
                     string += replacement
                 i += offset
@@ -236,7 +236,7 @@ class Parser:
                 continue
 
             # closing quote
-            sliced = __value[i : i+len(quote_token)]
+            sliced = value[i : i+len(quote_token)]
             if sliced == quote_token:
                 string += quote_token[0]
 
@@ -252,12 +252,11 @@ class Parser:
             raise TOMLError("String was open but not closed.")
 
     @classmethod
-    def key(cls, __key: str) -> list[str]:
+    def key(cls, key: str) -> list[str]:
         """
         Sanitize keys with quotes, giving the "path" to it.
         """
 
-        # Note: The "__" here is Parser._SEPARATOR
         #         input | output
         #         ------|-------
         #       foo.bar | ["foo", "bar"]
@@ -266,11 +265,11 @@ class Parser:
         # "foo.bar".baz | ["foo.bar", "baz"]
 
         parts = [None]
-        length = len(__key)
+        length = len(key)
 
         i = 0
         while i < length:
-            _, string, offset = Parser.string(__key[i:])
+            _, string, offset = Parser.string(key[i:])
             if string:
                 i += offset
                 # NOTE: string is quoted, eg from a """hello"world"""
@@ -279,7 +278,7 @@ class Parser:
                 parts.append(string[1:-1])
                 continue
 
-            char = __key[i]
+            char = key[i]
             if char == ".":
                 parts.append(None)
             else:
@@ -297,111 +296,171 @@ class Parser:
         return [part for part in parts if part is not None]
 
     @classmethod
-    def value(cls, __value: str, __line_info: Optional[ParsedLine] = None) -> Any:
-        """
-        (Try) Convert a string into a Python value.
+    def try_int(cls, string: str) -> Optional[int]:
+        """Try and convert a string into an integer."""
 
-        Note: __line_info is only used when parsing lists
-        """
+        if string.isdigit():
+            return int(string)
 
-        # quoted string, has to be first, to prevent casting it
-        if Syntax.is_quoted(__value):
-            # remove quotes
-            return __value[1:-1]
+        if string[0] == "0":
+            # looks like a float to me :P
+            if string[1] == ".":
+                return None  # return cls.try_float(string) ??
 
-        # integer
-        if __value.isdigit():
-            return int(__value)
+            base = {
+                "b": 2,
+                "o": 8,
+                "x": 16,
+            }.get(string[1], None)
 
-        # float
-        if (
-            __value.count(".") == 1
-            # if replacing a single dot with 0 yields a number, this was a float
-            and __value.replace(".", "0", 1).isdigit()
-        ):
-            return float(__value)
-
-        # bin/octal/hex literal
-        if __value[0] == "0":
-            base = {"b": 2, "o": 8, "x": 16}.get(__value[1])
             if base is None:
                 raise TOMLError("Invalid number.")
 
-            return int(__value, base)
+            return int(string, base)
 
-        # positive prefix, aka do nothing
-        if __value[0] == "+":
-            if __value[1] == "+":
-                raise TOMLError("Double sign is invalid.")
+        return None
 
-            if __value[1:3] in ("0b", "0o", "0x"):
-                raise TOMLError("Sign + specifier is invalid.")
+    @classmethod
+    def try_float(cls, string: str) -> Optional[float]:
+        """Try and convert a string into an floating point number."""
 
-            return cls.value(__value[1:])
+        literals = {
+            "inf": float("inf"),
+            "nan": float("nan")
+        }
 
-        # handle exponents here, avoid issue with 0e<something> numbers
+        maybe_literal = literals.get(string, None)
+        if maybe_literal is not None:
+            return maybe_literal
 
-        # negative numbers
-        if __value[0] == "-":
-            if __value[1] == "-":
-                raise TOMLError("Double sign is invalid.")
+        if (
+            string.count(".") == 1
+            # if replacing a single dot with 0 yields a number, this was a float
+            and string.replace(".", "0").isdigit()
+        ):
+            if string[0] == ".":
+                raise TOMLError("Leading point is invalid.")
 
-            # spec does not allow negative numbers with base prefix
-            if __value[1:3] not in ("0b", "0o", "0x"):
-                return -cls.value(__value[1:])
+            if string[-1] == ".":
+                raise TOMLError("Trailing point is invalid.")
+
+            return float(string)
+
+        return None
+
+    @classmethod
+    def try_number(cls, string: str) -> Optional[Union[int, float]]:
+        """Try and convert a string into a number."""
 
         # numbers with underscores
-        replaced = __value.replace("_", "")
-        if replaced.isdigit():
-            return int(__value)
+        if string[0] == "_":
+            raise TOMLError("Leading underscore is invalid.")
 
-        if replaced.count(".")  == 1 and replaced.replace(".", "0").isdigit():
-            return float(__value)
+        if string[-1] == "_":
+            raise TOMLError("Trailing underscore is invalid.")
 
-        # bool
-        if __value in {"true", "false"}:
-            return __value == "true"
+        if "__" in string:
+            raise TOMLError("Double underscore is invalid.")
 
-        # infinite and not a number
-        if __value in {"inf", "nan"}:
-            return float(__value)
+        if "_" in string:
+            if "._" in string or "_." in string:
+                raise TOMLError("Underscore next to point is invalid.")
+
+            maybe_number = cls.try_number(string.replace("_", ""))
+            if maybe_number is not None:
+                return maybe_number
+
+        # positive/negative sign
+        if string[0] in ("+", "-"):
+            if string[0] == string[1]:
+                raise TOMLError("Double sign is invalid.")
+
+            if string[1:3] in ("0b", "0o", "0x"):
+                raise TOMLError("Sign + specifier is invalid.")
+
+            maybe_number = cls.try_number(string[1:])
+            if maybe_number is not None:
+                multiplier = -1 if string[0] == "-" else 1
+                return multiplier * cls.try_number(string[1:])
+
+        maybe_number = cls.try_int(string)
+        if maybe_number is not None:
+            return maybe_number
+
+        maybe_number = cls.try_float(string)
+        if maybe_number is not None:
+            return maybe_number
+
+        return None
+
+    @classmethod
+    def try_bool(cls, string: str) -> Optional[bool]:
+        """Try and parse a literal value."""
+
+        literals = {
+            "true": True,
+            "false": False,
+        }
+
+        return literals.get(string, None)
+
+    @classmethod
+    def value(cls, string: str, line_info: Optional[ParsedLine] = None) -> Any:
+        """
+        (Try) Convert a string into a Python value.
+
+        Note: line_info is only used when parsing lists
+        """
+
+        # quoted string, has to be first, to prevent casting it
+        if Syntax.is_quoted(string):
+            # remove quotes
+            return string[1:-1]
+
+        maybe_number = cls.try_number(string)
+        if maybe_number is not None:
+            return maybe_number
+
+        maybe_bool = cls.try_bool(string)
+        if maybe_bool is not None:
+            return maybe_bool
 
         # array
-        if Syntax.is_in_brackets(__value):
-            if __line_info is None:
+        if Syntax.is_in_brackets(string):
+            if line_info is None:
                 raise TOMLError("How did we end on array parsing without line info?")
 
-            opening = __line_info.tokens[Tokens.OPENING_BRACKET]
-            closing = __line_info.tokens[Tokens.CLOSING_BRACKET]
+            opening = line_info.tokens[Tokens.OPENING_BRACKET]
+            closing = line_info.tokens[Tokens.CLOSING_BRACKET]
 
             if len(opening) != len(closing):
                 raise TOMLError("Mismatched brackets.")
 
-            value, _ = cls.list(__line_info.line, opening[0] + 1)
+            value, _ = cls.list(line_info.line, opening[0] + 1)
             return value
 
         # couldn't parse, raise Exception
         raise TOMLError(
-            f"Couldn't parse value: '{__value}' (Hint, remember to wrap strings in quotes)"
+            f"Couldn't parse value: '{string}' (Hint, remember to wrap strings in quotes)"
         )
 
     @classmethod
-    def list(cls, __line: str, __start: int) -> tuple[list[Any], int]:
+    def list(cls, line: str, start: int) -> tuple[list[Any], int]:
         """
         Helper to parse a list.
         Returns parsed list + where next element starts
         """
 
-        i = __start
+        i = start
         collected = ""
         elements = []
         parsed_since_last_comma = False
 
-        while i < len(__line):
-            char = __line[i]
+        while i < len(line):
+            char = line[i]
 
             # handle strings
-            _, string, offset = cls.string(__line[i:])
+            _, string, offset = cls.string(line[i:])
             if string:
                 elements.append(string[1:-1])
 
@@ -418,7 +477,7 @@ class Parser:
 
             # parse list and update current position
             elif char == Tokens.OPENING_BRACKET:
-                value, new_pos = cls.list(__line, i + 1)
+                value, new_pos = cls.list(line, i + 1)
                 elements.append(value)
 
                 i = new_pos
@@ -446,7 +505,7 @@ class Parser:
         return elements, i
 
     @classmethod
-    def toml(cls, __toml: str) -> Dotty:
+    def toml(cls, raw_file: str) -> Dotty:
         """
         Parse a whole TOML string.
         """
@@ -454,7 +513,7 @@ class Parser:
         table_name = []
         data = Dotty()
 
-        for raw_line in __toml.replace("\r\n", "\n").split("\n"):
+        for raw_line in raw_file.replace("\r\n", "\n").split("\n"):
             #             null    lf     us      del     bs
             for char in ("\x00", "\r", "\x1F", "\x7F", "\x08"):
                 if char in raw_line:
@@ -496,11 +555,11 @@ class Syntax:
     """Tiny helpers for syntax."""
 
     @staticmethod
-    def check_or_raise(__parsed: ParsedLine) -> Optional[str]:
+    def check_or_raise(parsed: ParsedLine) -> Optional[str]:
         """Run some checks."""
 
-        is_assignment = Syntax.is_assignment(__parsed)
-        is_table_setter = Syntax.is_in_brackets(__parsed.line)
+        is_assignment = Syntax.is_assignment(parsed)
+        is_table_setter = Syntax.is_in_brackets(parsed.line)
 
         if not is_assignment and not is_table_setter:
             raise TOMLError(
@@ -513,25 +572,25 @@ class Syntax:
                     "Line cant be an assignment and table setter."
                 )
 
-            equal_sign = __parsed.tokens[Tokens.EQUAL_SIGN][0]
-            if is_assignment and not len(__parsed.line) > equal_sign  + 1:
+            equal_sign = parsed.tokens[Tokens.EQUAL_SIGN][0]
+            if is_assignment and not len(parsed.line) > equal_sign  + 1:
                 raise TOMLError("Invalid assignment, nothing after equal sign.")
 
     @staticmethod
-    def is_quoted(__val: str) -> bool:
+    def is_quoted(value: str) -> bool:
         """Check if a string is quoted."""
-        return __val[0] == __val[-1] and __val[0] in Tokens.QUOTES
+        return value[0] == value[-1] and value[0] in Tokens.QUOTES
 
     @staticmethod
-    def is_assignment(__parsed: ParsedLine) -> bool:
+    def is_assignment(parsed: ParsedLine) -> bool:
         """Whether this line contains an assignment."""
-        return bool(__parsed.tokens[Tokens.EQUAL_SIGN])
+        return bool(parsed.tokens[Tokens.EQUAL_SIGN])
 
     @staticmethod
-    def is_in_brackets(__val: str) -> bool:
+    def is_in_brackets(value: str) -> bool:
         return (
-            __val[0] == Tokens.OPENING_BRACKET
-            and __val[-1] == Tokens.CLOSING_BRACKET
+            value[0] == Tokens.OPENING_BRACKET
+            and value[-1] == Tokens.CLOSING_BRACKET
         )
 
 

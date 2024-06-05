@@ -54,9 +54,9 @@ class Syntax(unittest.TestCase):
 
     def test_negative_values(self):
         """bin, oct and hex numbers can't be negative."""
-        self.syntax_error("foo = -0b10", self.CANT_PARSE)
-        self.syntax_error("foo = -0o10", self.CANT_PARSE)
-        self.syntax_error("foo = -0x10", self.CANT_PARSE)
+        self.syntax_error("foo = -0b10", "invalid")
+        self.syntax_error("foo = -0o10", "invalid")
+        self.syntax_error("foo = -0x10", "invalid")
 
 
 class ParseMixin:
