@@ -76,27 +76,23 @@ class Tokens:
         if replacement is not None:
             return replacement, 1
 
-        slice = None
-        offset = 0
-        if escaped == "u":
-            if string[1:9].isdigit():
-                slice = string[1:9]
-                offset = 9
-            elif string[1:5].isdigit():
-                slice = string[1:5]
-                offset = 5
-        elif escaped == "x":
-            if string[1:3].isdigit():
-                slice = string[1:3]
-                offset = 3
+        for specifier, width in (
+            ("u", 8),
+            ("u", 4),
+            ("x", 2),
+        ):
+            if escaped != specifier:
+                continue
 
-        if slice is None:
-            warnings.warn(rf"Unknown/invalid escape sequence '\{escaped}'")
-            return "\\" + escaped, 1
+            try:
+                char = chr(int(string[1 : 1 + width], 16))
+            except ValueError:
+                continue
 
-        return chr(int(slice, 16)), offset
+            return char, 1 + width
 
-
+        warnings.warn(rf"Unknown/invalid escape sequence '\{escaped}'")
+        return "\\" + escaped, 1
 
 
 class ParsedLine:
@@ -117,6 +113,8 @@ class ParsedLine:
         self.line = ""
         self.tokens = {t: [] for t in Tokens.ALL}
 
+        keep_escape = False
+
         stripped = __line.strip()
         length = len(stripped)
 
@@ -124,7 +122,10 @@ class ParsedLine:
         while i < length:
             char = stripped[i]
 
-            token, string, offset = Parser.string(stripped[i:])
+            # dont parse strings if we have an array
+            # the array-parsing logic will take care of that later
+            # and we dont want to do it twice
+            token, string, offset = Parser.string(stripped[i:], keep_escape=keep_escape)
             if string:
                 self.tokens[token].append(i)
                 self.tokens[token].append(i + offset)
@@ -145,6 +146,9 @@ class ParsedLine:
 
             # store tokens' positions
             if char in Tokens.ALL:
+                if char == Tokens.OPENING_BRACKET:
+                    keep_escape = True
+
                 self.tokens[char].append(len(self.line) - 1)
 
         # clean trailing spaces
@@ -170,7 +174,12 @@ class Parser:
     """Get Python values out of strings."""
 
     @classmethod
-    def string(cls, __value: str) -> tuple[str, str, int]:
+    def string(
+        cls,
+        __value: str,
+        *,
+        keep_escape: bool = False
+    ) -> tuple[str, str, int]:
         """
         Find the next **quoted** string in the input,
         return it and how much the cursor has been moved.
@@ -178,6 +187,10 @@ class Parser:
         Eg:
         >>> string("'''hello'world'''")
         >>> Tokens.TRIPLE_QUOTE, "hello'world", 17
+
+        Keeping escape sequences is only used when we get into a list when
+        initially scanning the raw line, because the code to parse list will
+        also parse the string, and if we really interpret it twice, code breaks.
         """
 
         quote_token = None
@@ -214,8 +227,11 @@ class Parser:
 
                 replacement, offset = Tokens.escaped_char(__value[i:])
 
+                if keep_escape:
+                    string += "\\" + __value[i : i+offset]
+                else:
+                    string += replacement
                 i += offset
-                string += replacement
 
                 continue
 
@@ -307,18 +323,29 @@ class Parser:
 
         # bin/octal/hex literal
         if __value[0] == "0":
-            specifier = __value[1].lower()
-            base = {"b": 2, "o": 8, "x": 16}.get(specifier, 0)
+            base = {"b": 2, "o": 8, "x": 16}.get(__value[1])
+            if base is None:
+                raise TOMLError("Invalid number.")
+
             return int(__value, base)
 
         # positive prefix, aka do nothing
         if __value[0] == "+":
+            if __value[1] == "+":
+                raise TOMLError("Double sign is invalid.")
+
+            if __value[1:3] in ("0b", "0o", "0x"):
+                raise TOMLError("Sign + specifier is invalid.")
+
             return cls.value(__value[1:])
 
         # handle exponents here, avoid issue with 0e<something> numbers
 
         # negative numbers
         if __value[0] == "-":
+            if __value[1] == "-":
+                raise TOMLError("Double sign is invalid.")
+
             # spec does not allow negative numbers with base prefix
             if __value[1:3] not in ("0b", "0o", "0x"):
                 return -cls.value(__value[1:])
@@ -368,6 +395,7 @@ class Parser:
         i = __start
         collected = ""
         elements = []
+        parsed_since_last_comma = False
 
         while i < len(__line):
             char = __line[i]
@@ -378,7 +406,7 @@ class Parser:
                 elements.append(string[1:-1])
 
                 i += offset
-                # collected = ""  # not needed (?)
+                parsed_since_last_comma = True
 
             # stop when current list ends
             elif char == Tokens.CLOSING_BRACKET:
@@ -395,15 +423,19 @@ class Parser:
 
                 i = new_pos
                 collected = ""
+                parsed_since_last_comma = True
 
             # parse the element we had collected
             elif char == Tokens.COMMA:
                 stripped = collected.strip()
                 if stripped:
                     elements.append(cls.value(stripped))
+                elif not parsed_since_last_comma:
+                    raise TOMLError("Malformed array, check out your commas.")
 
                 i += 1
                 collected = ""
+                parsed_since_last_comma = False
 
             # collect another char
             else:
@@ -422,15 +454,21 @@ class Parser:
         table_name = []
         data = Dotty()
 
-        lines = __toml.replace("\r", "").split("\n")
-        for i, raw_line in enumerate(lines, 1):
+        for raw_line in __toml.replace("\r\n", "\n").split("\n"):
+            #             null    lf     us      del     bs
+            for char in ("\x00", "\r", "\x1F", "\x7F", "\x08"):
+                if char in raw_line:
+                    raise TOMLError(
+                        f"Invalid control sequence {char!r} found."
+                    )
+
             parsed_line = ParsedLine(raw_line)
 
             # empty line => nothing to be done
             if parsed_line.is_empty():
                 continue
 
-            Syntax.check_or_raise(parsed_line, i)
+            Syntax.check_or_raise(parsed_line)
 
             # at this point, line should have content and correct syntax, this code can be rather dumb
             # we can't strip or anything like that tho, indexes would be broken
@@ -458,34 +496,26 @@ class Syntax:
     """Tiny helpers for syntax."""
 
     @staticmethod
-    def check_or_raise(__parsed: ParsedLine, __i: int) -> Optional[str]:
+    def check_or_raise(__parsed: ParsedLine) -> Optional[str]:
         """Run some checks."""
 
-        #######################
-        # Table or assignment #
-        #######################
         is_assignment = Syntax.is_assignment(__parsed)
         is_table_setter = Syntax.is_in_brackets(__parsed.line)
 
         if not is_assignment and not is_table_setter:
             raise TOMLError(
-                "Line has to contain either an assignment or table setter"
-                f" (line {__i})"
+                "Line has to contain either an assignment or table setter."
             )
 
-        if is_assignment and is_table_setter:
-            raise TOMLError(
-                "Line cant be an assignment and table setter at the same time"
-                f" (line {__i})"
-            )
+        if is_assignment:
+            if is_table_setter:
+                raise TOMLError(
+                    "Line cant be an assignment and table setter."
+                )
 
-        ##############
-        # Assignment #
-        ##############
-        if is_assignment and not len(__parsed.line) > (__parsed.tokens[Tokens.EQUAL_SIGN][0] + 1):
-            raise TOMLError(
-                f"Invalid assignment, nothing after equal sign (line {__i})"
-            )
+            equal_sign = __parsed.tokens[Tokens.EQUAL_SIGN][0]
+            if is_assignment and not len(__parsed.line) > equal_sign  + 1:
+                raise TOMLError("Invalid assignment, nothing after equal sign.")
 
     @staticmethod
     def is_quoted(__val: str) -> bool:
@@ -522,7 +552,7 @@ def dumps(__data: Dotty | dict) -> str:
     """Write a (dotty) dict as TOML into a string."""
 
     if not isinstance(__data, (Dotty, dict)):
-        raise TOMLError("dumping is only implemented for dict-like objects")
+        raise TOMLError("dumping is only implemented for dict-like objects.")
 
     # enclose on a dict, to easily find the "tables" on it
     if isinstance(__data, Dotty):

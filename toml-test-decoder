@@ -74,7 +74,7 @@ def main() -> int:
         sys.stderr.write(str(e))
         sys.stderr.write("\n")
         return 1
-    
+
     typed = add_types(parsed._data)
     json.dump(typed, sys.stdout)
     sys.stdout.write("\n")
