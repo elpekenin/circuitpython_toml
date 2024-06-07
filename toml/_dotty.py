@@ -6,17 +6,16 @@ try:
 except ImportError:
     pass
 
+import warnings
+
 
 class Dotty:
     """Minimal wrapper around a dict, adding support for `key.key` indexing."""
 
-    tables: set[str]
-    """Stores the tables on this DottyDict."""
-
     _BASE = object()
     """Special id to return the base dict."""
 
-    def __init__(self, __data: Optional[dict] = None, *, fill_tables: bool = False):
+    def __init__(self, __data: Optional[dict] = None):
         """Create a new instance, either empty or around existing data."""
 
         if __data is None:
@@ -27,40 +26,13 @@ class Dotty:
 
         self._data = __data
 
-        # set ensures no duplications
-        # shouldnt happen anyway, due to _get_or_create's logic
-        self.tables = set()
-
-        # _BASE => items at root of the dict
-        self.tables.add(self._BASE)
-
-        if fill_tables:
-            def _fill(key: str, value: object) -> None:
-                """Helper to iterate nested dicts"""
-
-                if isinstance(value, dict):
-                    self.tables.add(key)
-
-                    for k, v in value.items():
-                        _fill(f"{key}.{k}", v)
-
-            for k, v in self._data.items():
-                _fill(k, v)
-
     def __str__(self):
         """String just shows the dict inside."""
         return str(self._data)
 
     def __repr__(self):
-        """Repr shows data and tables"""
-        tables = self.tables.copy()
-        tables.remove(self._BASE)
-        table_str = (
-            f", tables={tables}"
-            if tables
-            else ""
-        )
-        return f"<Dotty data={self._data}{table_str}>"
+        """Repr shows data"""
+        return f"<Dotty data={self._data}>"
 
     @staticmethod
     def split(key: str) -> tuple[list[str], str]:
@@ -81,8 +53,8 @@ class Dotty:
         if not isinstance(key, str):
             return [], key
 
-        parts = key.split(".")
-        return parts[:-1], parts[-1]
+        *parts, last = key.split(".")
+        return parts, last
 
     def __getitem__(self, __key: object) -> object:
         """Syntactic sugar to get a nested item."""
@@ -99,33 +71,60 @@ class Dotty:
 
         return table[last]
 
-    def _get_or_create(self, item: dict, k: str, global_key: str) -> dict:
-        """Helper function that creates the nested dict if not present."""
+    def get_or_create_dict(self, parts: list[str]) -> dict:
+        """
+        Helper function to get a nested dict from its "path", creates
+        parent(s) if they are not already present.
+        """
 
-        if k not in item and isinstance(item, dict):
-            # Add to tables             v get rid of heading dot(s)
-            self.tables.add(global_key.lstrip("."))
+        global_key = ""
+        table = self._data
 
-            item[k] = {}
+        warn_dot, warn_empty = False, False
+        for part in parts:
+            if not isinstance(table, dict):
+                raise ValueError(
+                    "Something went wrong on get_or_create_dict."
+                    " This is not a dict."
+                )
 
-        return item[k]
+            if "." in part:
+                warn_dot = True
+
+            if part == "":
+                warn_empty = True
+
+            if part not in table:
+                global_key += "." + part  #
+
+                # create new dict
+                table[part] = {}
+
+            # update "location"
+            table = table[part]
+
+        if warn_dot:
+            warnings.warn(
+                "Keys with dots will be added to structure correctly, but you"
+                " will have to read them manually from `Dotty._data`"
+            )
+
+        if warn_empty:
+            warnings.warn(
+                "Empty keys will be added to structure correctly, but you"
+                " will have to read them manually from `Dotty._data`"
+            )
+
+        return table
 
     def __setitem__(self, __key: str, __value: object):
         """
         Syntactic sugar to set a nested item.
-
-        Known limitation, setting dicts doesn't update `self.tables`.
-        ie, expect issues with code like:
-        >>> dotty["foo"] = {"bar": baz}
         """
 
         keys, last = self.split(__key)
-        global_key = ""
 
-        table = self._data
-        for k in keys:
-            global_key += "." + k
-            table = self._get_or_create(table, k, global_key)
+        table = self.get_or_create_dict(keys)
 
         table[last] = __value
 
@@ -177,16 +176,3 @@ class Dotty:
         if len(table) == 0:
             if parent_table:
                 parent_table.pop(keys[-1])
-
-            self.tables.remove(".".join(keys))
-
-        # if key was a table itself, remove it (and children) from set
-        if __key in self.tables:
-            self.tables.remove(__key)
-
-            for table in self.tables.copy():
-                if (
-                    table != self._BASE
-                    and table.startswith(f"{__key}.")
-                ):
-                    self.tables.remove(table)

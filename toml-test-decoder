@@ -2,9 +2,12 @@
 
 import json
 import sys
+import warnings
 from pathlib import Path
 from typing import Any, TypedDict
 
+# this prints to stdout, which breaks toml-test
+warnings.filterwarnings(action="ignore")
 
 THIS = Path(__file__).parent
 sys.path.insert(0, str(THIS))
@@ -71,7 +74,7 @@ def main() -> int:
         sys.stderr.write(str(e))
         sys.stderr.write("\n")
         return 1
-    
+
     typed = add_types(parsed._data)
     json.dump(typed, sys.stdout)
     sys.stdout.write("\n")

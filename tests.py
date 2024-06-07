@@ -39,7 +39,7 @@ class Syntax(unittest.TestCase):
         self.syntax_error("foo = ", "nothing after equal sign")
 
     def test_extra_quote(self):
-        self.syntax_error("foo = 'bar''", "Malformed string")
+        self.syntax_error("foo = 'bar''", "String was open but not closed")
 
     def test_content_after_string(self):
         self.syntax_error("foo = 'bar'baz", self.CANT_PARSE)
@@ -54,15 +54,16 @@ class Syntax(unittest.TestCase):
 
     def test_negative_values(self):
         """bin, oct and hex numbers can't be negative."""
-        self.syntax_error("foo = -0b10", self.CANT_PARSE)
-        self.syntax_error("foo = -0o10", self.CANT_PARSE)
-        self.syntax_error("foo = -0x10", self.CANT_PARSE)
+        self.syntax_error("foo = -0b10", "invalid")
+        self.syntax_error("foo = -0o10", "invalid")
+        self.syntax_error("foo = -0x10", "invalid")
 
 
 class ParseMixin:
     def assertParsedValue(self, file: str, expected: dict):
         """Common logic to check the parsed value(s)."""
         self.assertEqual(toml.loads(file), Dotty(expected))
+
 
 class Parse(unittest.TestCase, ParseMixin):
     """Values are parsed correctly."""
@@ -74,8 +75,11 @@ class Parse(unittest.TestCase, ParseMixin):
     def test_strings(self):
         self.assertParsedValue("foo = 'bar'", {"foo": "bar"})
         self.assertParsedValue("foo = '#bar'", {"foo": "#bar"})
-        self.assertParsedValue("foo = 'bar\"baz'", {"foo": "bar\"baz"})
         self.assertParsedValue("foo = '0'", {"foo": "0"})  # not an int
+
+    def test_triple_strings(self):
+        self.assertParsedValue("foo = '''bar'''", {"foo": "bar"})
+        self.assertParsedValue("foo = '''bar'baz'''", {"foo": "bar'baz"})
 
     def test_numbers(self):
         self.assertParsedValue("foo = 0b10", {"foo": 0b10})
@@ -124,6 +128,21 @@ class Parse(unittest.TestCase, ParseMixin):
             {"foo": 0, "bar": {"foo": 1}, "baz": {"baz": {"foo": 2}}}
         )
 
+    def test_escape_sequences(self):
+        """
+        We want parser to see the actual backslash, it has to be escaped too.
+        """
+        self.assertParsedValue("foo = 'bar\\\"baz'", {"foo": "bar\"baz"})
+        self.assertParsedValue('foo = """bar\\""""', {"foo": 'bar"'})
+
+    def test_dotted_keys(self):
+        """Check that dots on quoted keys are parsed as expected."""
+        self.assertParsedValue("foo.bar = 'baz'",   {"foo": {"bar": "baz"}})
+        self.assertParsedValue("'foo.bar' = 'baz'", {"foo.bar": "baz"})
+        self.assertParsedValue("'foo.bar'.baz = 0", {"foo.bar": {"baz": 0}})
+        self.assertParsedValue("'foo.bar.baz' = 0", {"foo.bar.baz": 0})
+        self.assertParsedValue("foo.'bar.baz' = 0", {"foo": {"bar.baz": 0}})
+
 
 class Issues(unittest.TestCase, ParseMixin):
     """Reported issues that have been solved since."""
@@ -153,7 +172,6 @@ class Issues(unittest.TestCase, ParseMixin):
                     }
                 }
             },
-            fill_tables=True
         )
         del data["foo.bar"]
 
@@ -161,10 +179,6 @@ class Issues(unittest.TestCase, ParseMixin):
         self.assertNotIn("foo.bar", data)
         self.assertNotIn("foo.bar.baz", data)
         self.assertNotIn("foo.bar.baz.value", data)
-
-        # neither are tables tracked
-        self.assertNotIn("foo.bar", data.tables)
-        self.assertNotIn("foo.bar.baz", data.tables)
 
         with self.assertRaises(KeyError):
             data["foo.bar.bar.value"]
@@ -176,14 +190,11 @@ class Issues(unittest.TestCase, ParseMixin):
                     "bar": 0
                 }
             },
-            fill_tables=True
         )
         del data["foo.bar"]
 
         with self.assertRaises(KeyError):
             data["foo.bar"]
-
-        self.assertNotIn("foo", data.tables)
 
     def test_5(self):
         self.assertParsedValue(
