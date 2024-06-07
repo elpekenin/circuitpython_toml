@@ -1,12 +1,18 @@
 Changelog
 =========
 
-Version 0.1.9 (2nd Jun 2024)
+Version 0.1.9 (8th Jun 2024)
 ----------------------------
 
-* Slight refactor of the parser, get closer to spec compiance
-  * Parse inline (but not multiline) triple-quoted strings (`"""` and `'''`)
-  * Handle quoted keys as expected (`"key.value" = 0` != `key.value = 0`)
+Refactor of the parser, to get closer to the specification
+* Add functionality to test against spec (`toml-test`)
+* Parse inline (not multiline) triple-quoted strings (`"""` and `'''`)
+* Handle quoted keys as expected (`"key.value" = 0` != `key.value = 0`)
+* Support escape sequences
+* `inf` and `nan`
+* Numbers with underscores
+* Better string parsing, may still fail, and perhaps some missed regression
+* Extra validations that were not done yet (eg: double sign is invalid)
 
 
 Version 0.1.8 (1st Jun 2024)

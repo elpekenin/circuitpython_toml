@@ -91,6 +91,7 @@ class Tokens:
 
             return char, 1 + width
 
+        # TODO: should this raise instead?
         warnings.warn(rf"Unknown/invalid escape sequence '\{escaped}'")
         return "\\" + escaped, 1
 
@@ -430,13 +431,8 @@ class Parser:
             if line_info is None:
                 raise TOMLError("How did we end on array parsing without line info?")
 
-            opening = line_info.tokens[Tokens.OPENING_BRACKET]
-            closing = line_info.tokens[Tokens.CLOSING_BRACKET]
-
-            if len(opening) != len(closing):
-                raise TOMLError("Mismatched brackets.")
-
-            value, _ = cls.list(line_info.line, opening[0] + 1)
+            start = line_info.tokens[Tokens.OPENING_BRACKET][0]
+            value, _ = cls.list(line_info.line, start + 1)
             return value
 
         # couldn't parse, raise Exception
@@ -575,6 +571,11 @@ class Syntax:
             equal_sign = parsed.tokens[Tokens.EQUAL_SIGN][0]
             if is_assignment and not len(parsed.line) > equal_sign  + 1:
                 raise TOMLError("Invalid assignment, nothing after equal sign.")
+
+        opening = parsed.tokens[Tokens.OPENING_BRACKET]
+        closing = parsed.tokens[Tokens.CLOSING_BRACKET]
+        if len(opening) != len(closing):
+            raise TOMLError("Mismatched brackets.")
 
     @staticmethod
     def is_quoted(value: str) -> bool:
