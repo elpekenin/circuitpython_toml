@@ -1,6 +1,13 @@
 Changelog
 =========
 
+
+Version 0.1.10 (8th Jun 2024)
+-----------------------------
+
+* Remove raw-fstring, not supported by mpy-cross
+
+
 Version 0.1.9 (8th Jun 2024)
 ----------------------------
 

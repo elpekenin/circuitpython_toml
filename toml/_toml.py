@@ -92,7 +92,7 @@ class Tokens:
             return char, 1 + width
 
         # TODO: should this raise instead?
-        warnings.warn(rf"Unknown/invalid escape sequence '\{escaped}'")
+        warnings.warn(f"Unknown/invalid escape sequence '\\{escaped}'")
         return "\\" + escaped, 1
 
 
