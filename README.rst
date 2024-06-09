@@ -1,13 +1,11 @@
 ******************
 circuitpython_toml
 ******************
-
 :Info: Basic(TM) library meant to work with a subset of TOML spec, intended to be used on CircuitPython.
 :Author: Pablo Martinez Bernal <elpekenin@elpekenin.dev>
 
 Motivation
 ==========
-
 As of summer 2023, `os.getenv`:
 
 * Only supports reading base-10 integers and strings.
@@ -25,38 +23,55 @@ This driver depends on:
 
 i.e. No dependencies :)
 
-Features
-========
+Installing from PyPI
+=====================
+Will not be in PyPI (yet?). Reason for this is simple, CPython ships with `tomllib` on its stdlib, use it instead.
 
-Covers (what i feel are) the most useful parts of the TOML spec.
+Installing to a Connected CircuitPython Device with Circup
+==========================================================
+Make sure that you have ``circup`` installed in your Python environment.
+Install it with the following command if necessary:
 
-Some unsupported things are (non-exhaustive list):
+.. code-block:: shell
 
-* Multi-line strings (aka triple quoted ones)
-* Quoted keys
-* Re-definition of keys is allowed (against spec)
-* Date literals
-* Scientific notation (eg 10e3)
-* Separators in numbers (eg 10_000)
+    pip3 install circup
+
+With ``circup`` installed and your CircuitPython device connected use the
+following command to install:
+
+.. code-block:: shell
+
+    circup install toml
+
+Or the following command to update an existing version:
+
+.. code-block:: shell
+
+    circup update
 
 Usage Example
 =============
-
 It's pretty straight forward, it's similar to the `toml` module on CPython's standard lib.
 Here's a little example showing the power of `Dotty` for accessing nested items.
 
 .. code-block:: python
 
    >>> import toml
-   >>> data = toml.load("settings.toml")
+   >>>
+   >>> with open("settings.toml", "r") as f:
+   >>>     data = toml.load(f)
+   >>>
    >>> data["foo"]["bar"]
    "baz"
    >>> data["foo.bar"]
    "baz"
 
+Documentation
+=============
+Maybe in the future
+
 Contributing
 ============
-
 TODO: Proper list of requisites and whatnot.
 For now just open PRs and issues, they are very much welcome!!
 
