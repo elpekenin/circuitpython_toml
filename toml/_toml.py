@@ -115,7 +115,7 @@ class ParsedLine:
     """Mapping from tokens to the position(s) where they are found on the line."""
 
     def __str__(self) -> str:
-        return f"line={self.line!r}, tokens={self.tokens!r}"
+        return f"line={repr(self.line)}, tokens={repr(self.tokens)}"
 
     __repr__ = __str__
 
@@ -516,7 +516,7 @@ class Parser:
             #             null    lf     us      del     bs
             for char in ("\x00", "\r", "\x1F", "\x7F", "\x08"):
                 if char in raw_line:
-                    raise TOMLError(f"Invalid control sequence {char!r} found.")
+                    raise TOMLError(f"Invalid control sequence {repr(char)} found.")
 
             parsed_line = ParsedLine(raw_line)
 
