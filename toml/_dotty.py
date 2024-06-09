@@ -1,4 +1,12 @@
-# inspired by https://github.com/pawelzny/dotty_dict/tree/master
+# SPDX-FileCopyrightText: 2024 Pablo Martinez Bernal (elpekenin)
+#
+# SPDX-License-Identifier: MIT
+
+"""
+Convenience class around a dict, to allow accessing nested dicts with dotted keys.
+
+Inspired by https://github.com/pawelzny/dotty_dict/tree/master
+"""
 
 try:
     # types are needed on compyter
@@ -24,15 +32,15 @@ class Dotty:
         if not isinstance(__data, dict):
             raise ValueError("data to be wrapped has to be a dict.")
 
-        self._data = __data
+        self.data = __data
 
     def __str__(self):
         """String just shows the dict inside."""
-        return str(self._data)
+        return str(self.data)
 
     def __repr__(self):
         """Repr shows data"""
-        return f"<Dotty data={self._data}>"
+        return f"<Dotty data={self.data}>"
 
     @staticmethod
     def split(key: str) -> tuple[list[str], str]:
@@ -61,11 +69,11 @@ class Dotty:
 
         # special case, return base dict
         if __key == self._BASE:
-            return self._data
+            return self.data
 
         keys, last = self.split(__key)
 
-        table = self._data
+        table = self.data
         for k in keys:
             table = table[k]
 
@@ -78,14 +86,13 @@ class Dotty:
         """
 
         global_key = ""
-        table = self._data
+        table = self.data
 
         warn_dot, warn_empty = False, False
         for part in parts:
             if not isinstance(table, dict):
                 raise ValueError(
-                    "Something went wrong on get_or_create_dict."
-                    " This is not a dict."
+                    "Something went wrong on get_or_create_dict. This is not a dict."
                 )
 
             if "." in part:
@@ -138,8 +145,8 @@ class Dotty:
         Apparently not too useful on CP
           > https://github.com/elpekenin/circuitpython_toml/issues/4
         """
-        if hasattr(self._data, __key):
-            return getattr(self._data, __key)
+        if hasattr(self.data, __key):
+            return getattr(self.data, __key)
 
         raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{__key}'")
 
@@ -151,7 +158,7 @@ class Dotty:
                 f"Comparation not implemented for {klass} and {type(__value)}"
             )
 
-        return self._data == __value._data
+        return self.data == __value.data
 
     def __contains__(self, __key: object) -> bool:
         try:
@@ -164,7 +171,7 @@ class Dotty:
         keys, last = self.split(__key)
 
         parent_table = None
-        table = self._data
+        table = self.data
         for k in keys:
             parent_table = table
             table = table[k]

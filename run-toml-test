@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# SPDX-FileCopyrightText: 2024 Pablo Martinez Bernal (elpekenin)
+#
+# SPDX-License-Identifier: MIT
+
 # TODO?: Run unittest here too?
 # WIP: Invalid tests still to be checked
 #      Some features might get added while doing so

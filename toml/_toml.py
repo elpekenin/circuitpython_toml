@@ -1,5 +1,14 @@
+# SPDX-FileCopyrightText: 2024 Pablo Martinez Bernal (elpekenin)
+#
+# SPDX-License-Identifier: MIT
+
+"""
+Logic to parse a TOML file/string into a data structure. This structure
+is a custom class (Dotty) around a regular dict, adding some convenience.
+"""
+
 try:
-    # types are needed on compyter
+    # types are needed on computer (CPython)
     from typing import Any, Optional, Union
 except ImportError:
     pass
@@ -59,20 +68,20 @@ class Tokens:
         Returns replacement and how much to update the pointer.
         """
 
-        REPLACEMENTS = {
+        replacements = {
             "b": "\b",
             "t": "\t",
             "n": "\n",
             "f": "\f",
             "r": "\r",
             "e": 0x1B,  # "\e" is not a thing
-            "\"": "\"",
+            '"': '"',
             "\\": "\\",
         }
 
         escaped = string[0]
 
-        replacement = REPLACEMENTS.get(escaped, None)
+        replacement = replacements.get(escaped, None)
         if replacement is not None:
             return replacement, 1
 
@@ -106,7 +115,7 @@ class ParsedLine:
     """Mapping from tokens to the position(s) where they are found on the line."""
 
     def __str__(self) -> str:
-        return f"line={self.line!r}, tokens={self.tokens!r}"
+        return f"line={repr(self.line)}, tokens={repr(self.tokens)}"
 
     __repr__ = __str__
 
@@ -162,7 +171,9 @@ class ParsedLine:
     def key_value(self) -> tuple[str, str]:
         """Get the key and value on this line (ie: split on equal sign)."""
 
-        assert len(self.tokens[Tokens.EQUAL_SIGN]), "How did we end up on key_value with len(EQUAL) != 1"
+        assert len(
+            self.tokens[Tokens.EQUAL_SIGN]
+        ), "How did we end up on key_value with len(EQUAL) != 1"
 
         split_at = self.tokens[Tokens.EQUAL_SIGN][0]
         key = self.line[:split_at].strip()
@@ -175,12 +186,7 @@ class Parser:
     """Get Python values out of strings."""
 
     @classmethod
-    def string(
-        cls,
-        value: str,
-        *,
-        keep_escape: bool = False
-    ) -> tuple[str, str, int]:
+    def string(cls, value: str, *, keep_escape: bool = False) -> tuple[str, str, int]:
         """
         Find the next **quoted** string in the input,
         return it and how much the cursor has been moved.
@@ -199,7 +205,7 @@ class Parser:
         i = 0
 
         for token in Tokens.QUOTES:
-            sliced = value[i : i+len(token)]
+            sliced = value[i : i + len(token)]
             if sliced == token:
                 # opening quote
                 if quote_token is None:
@@ -229,7 +235,7 @@ class Parser:
                 replacement, offset = Tokens.escaped_char(value[i:])
 
                 if keep_escape:
-                    string += "\\" + value[i : i+offset]
+                    string += "\\" + value[i : i + offset]
                 else:
                     string += replacement
                 i += offset
@@ -237,7 +243,7 @@ class Parser:
                 continue
 
             # closing quote
-            sliced = value[i : i+len(quote_token)]
+            sliced = value[i : i + len(quote_token)]
             if sliced == quote_token:
                 string += quote_token[0]
 
@@ -325,10 +331,7 @@ class Parser:
     def try_float(cls, string: str) -> Optional[float]:
         """Try and convert a string into an floating point number."""
 
-        literals = {
-            "inf": float("inf"),
-            "nan": float("nan")
-        }
+        literals = {"inf": float("inf"), "nan": float("nan")}
 
         maybe_literal = literals.get(string, None)
         if maybe_literal is not None:
@@ -513,9 +516,7 @@ class Parser:
             #             null    lf     us      del     bs
             for char in ("\x00", "\r", "\x1F", "\x7F", "\x08"):
                 if char in raw_line:
-                    raise TOMLError(
-                        f"Invalid control sequence {char!r} found."
-                    )
+                    raise TOMLError(f"Invalid control sequence {repr(char)} found.")
 
             parsed_line = ParsedLine(raw_line)
 
@@ -525,7 +526,7 @@ class Parser:
 
             Syntax.check_or_raise(parsed_line)
 
-            # at this point, line should have content and correct syntax, this code can be rather dumb
+            # at this point, line should have content and correct syntax, code can be dumb(ish)
             # we can't strip or anything like that tho, indexes would be broken
 
             # equal sign => assignment expresion
@@ -558,18 +559,14 @@ class Syntax:
         is_table_setter = Syntax.is_in_brackets(parsed.line)
 
         if not is_assignment and not is_table_setter:
-            raise TOMLError(
-                "Line has to contain either an assignment or table setter."
-            )
+            raise TOMLError("Line has to contain either an assignment or table setter.")
 
         if is_assignment:
             if is_table_setter:
-                raise TOMLError(
-                    "Line cant be an assignment and table setter."
-                )
+                raise TOMLError("Line cant be an assignment and table setter.")
 
             equal_sign = parsed.tokens[Tokens.EQUAL_SIGN][0]
-            if is_assignment and not len(parsed.line) > equal_sign  + 1:
+            if is_assignment and not len(parsed.line) > equal_sign + 1:
                 raise TOMLError("Invalid assignment, nothing after equal sign.")
 
         opening = parsed.tokens[Tokens.OPENING_BRACKET]
@@ -589,9 +586,9 @@ class Syntax:
 
     @staticmethod
     def is_in_brackets(value: str) -> bool:
+        """Whether string starts with an opening bracket and ends with a closing one."""
         return (
-            value[0] == Tokens.OPENING_BRACKET
-            and value[-1] == Tokens.CLOSING_BRACKET
+            value[0] == Tokens.OPENING_BRACKET and value[-1] == Tokens.CLOSING_BRACKET
         )
 
 
@@ -616,23 +613,15 @@ def dumps(__data: Dotty | dict) -> str:
 
     # enclose on a dict, to easily find the "tables" on it
     if isinstance(__data, Dotty):
-        __data = __data._data
+        __data = __data.data
 
-    def order(kv):
+    def order(key_value):
         """Custom function to dump basic keys before nested tables."""
 
-        k, v = kv
-        return (
-            1000
-            if isinstance(v, dict)
-            else len(k)
-        )
+        key, value = key_value
+        return 1000 if isinstance(value, dict) else len(key)
 
-    def dump_table(
-        buffer: StringIO,
-        table: dict,
-        key_parts: list[str]
-    ) -> StringIO:
+    def dump_table(buffer: StringIO, table: dict, key_parts: list[str]) -> StringIO:
         """Helper to iterate the tree. Returns the buffer for convenience."""
 
         for key, value in sorted(table.items(), key=order):
@@ -643,7 +632,7 @@ def dumps(__data: Dotty | dict) -> str:
             if isinstance(value, dict):
                 # update global key
                 key_parts.append(key)
-                
+
                 # write table header
                 table_name = ".".join(key_parts)
                 if table_name:
