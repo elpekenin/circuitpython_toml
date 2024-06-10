@@ -79,6 +79,22 @@ class Dotty:
 
         return table[last]
 
+    @staticmethod
+    def validate_keys(*parts: str):
+        """Warn used about problematic keys."""
+
+        warn = False
+        for part in parts:
+            if "." in part or part == "":
+                warn = True
+                break
+
+        if warn:
+            warnings.warn(
+                "Empty keys and keys with dots will be added to structure correctly,"
+                " but you will have to read them manually `Dotty`"
+            )
+
     def get_or_create_dict(self, parts: list[str]) -> dict:
         """
         Helper function to get a nested dict from its "path", creates
@@ -88,18 +104,11 @@ class Dotty:
         global_key = ""
         table = self.data
 
-        warn_dot, warn_empty = False, False
         for part in parts:
             if not isinstance(table, dict):
                 raise ValueError(
                     "Something went wrong on get_or_create_dict. This is not a dict."
                 )
-
-            if "." in part:
-                warn_dot = True
-
-            if part == "":
-                warn_empty = True
 
             if part not in table:
                 global_key += "." + part  #
@@ -110,18 +119,6 @@ class Dotty:
             # update "location"
             table = table[part]
 
-        if warn_dot:
-            warnings.warn(
-                "Keys with dots will be added to structure correctly, but you"
-                " will have to read them manually from `Dotty._data`"
-            )
-
-        if warn_empty:
-            warnings.warn(
-                "Empty keys will be added to structure correctly, but you"
-                " will have to read them manually from `Dotty._data`"
-            )
-
         return table
 
     def __setitem__(self, __key: str, __value: object):
@@ -131,6 +128,7 @@ class Dotty:
 
         keys, last = self.split(__key)
 
+        self.validate_keys(*keys, last)
         table = self.get_or_create_dict(keys)
 
         table[last] = __value

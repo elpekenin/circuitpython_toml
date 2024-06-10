@@ -536,13 +536,17 @@ class Parser:
                 *parts, last = cls.key(key)
                 parts = table_name + parts
 
+                data.validate_keys(*parts, last)
                 table = data.get_or_create_dict(parts)
+
                 table[last] = cls.value(value, parsed_line)
 
             # no equal sign => table assignment, ie: [table]
             else:
                 # remove "[" and "]", handle quotes/dots
                 table_name = cls.key(parsed_line.line[1:-1])
+
+                data.validate_keys(*table_name)
                 data.get_or_create_dict(table_name)
 
         return data
