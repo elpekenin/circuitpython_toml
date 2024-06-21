@@ -83,17 +83,13 @@ class Dotty:
     def validate_keys(*parts: str):
         """Warn used about problematic keys."""
 
-        warn = False
         for part in parts:
             if "." in part or part == "":
-                warn = True
-                break
-
-        if warn:
-            warnings.warn(
-                "Empty keys and keys with dots will be added to structure correctly,"
-                " but you will have to read them manually `Dotty`"
-            )
+                warnings.warn(
+                    "Empty keys and keys with dots will be added to structure correctly,"
+                    " but you will have to read them manually `Dotty`"
+                )
+                return
 
     def get_or_create_dict(self, parts: list[str]) -> dict:
         """
