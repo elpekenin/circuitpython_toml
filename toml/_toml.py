@@ -536,7 +536,7 @@ class Parser:
                 *parts, last = cls.key(key)
                 parts = table_name + parts
 
-                data.validate_keys(*parts, last)
+                data.validate_keys(last, *parts)
                 table = data.get_or_create_dict(parts)
 
                 table[last] = cls.value(value, parsed_line)

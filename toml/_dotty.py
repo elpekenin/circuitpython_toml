@@ -124,7 +124,7 @@ class Dotty:
 
         keys, last = self.split(__key)
 
-        self.validate_keys(*keys, last)
+        self.validate_keys(last, *keys)
         table = self.get_or_create_dict(keys)
 
         table[last] = __value
