@@ -2,21 +2,26 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""
-Logic to parse a TOML file/string into a data structure. This structure
-is a custom class (Dotty) around a regular dict, adding some convenience.
+"""Logic to parse a TOML file/string into a data structure.
+
+This structure is a custom class (Dotty) around a regular dict, adding some convenience.
 """
 
-try:
-    # types are needed on computer (CPython)
-    from typing import Any, Optional, Union
-except ImportError:
-    pass
+from __future__ import annotations
 
 import warnings
 from io import StringIO
 
 from ._dotty import Dotty
+
+TYPE_CHECKING = False
+try:  # noqa: SIM105  # CircuitPython has no contextlib.suppress
+    from typing import TYPE_CHECKING, TextIO
+except ImportError:
+    pass
+
+if TYPE_CHECKING:
+    from collections.abc import Sized
 
 
 class TOMLError(Exception):
@@ -39,14 +44,14 @@ class Tokens:
 
     # triple has to be first, as regular quotes would match too
     # thus, this also needs to be a list, to maintain order
-    QUOTES = [
+    QUOTES = (
         TRIPLE_QUOTE,
         TRIPLE_DQUOTE,
         QUOTE,
         DQUOTE,
-    ]
+    )
 
-    ALL = {
+    ALL = (
         OPENING_BRACKET,
         CLOSING_BRACKET,
         QUOTE,
@@ -57,31 +62,30 @@ class Tokens:
         COMMENT,
         COMMA,
         BACKSLASH,
-    }
+    )
 
     @staticmethod
     def escaped_char(string: str) -> tuple[str, int]:
-        """
-        From TOML's documentation
+        """See TOML's documentation for details, link below.
+
         https://github.com/toml-lang/toml/blob/main/toml.md#string
 
         Returns replacement and how much to update the pointer.
         """
-
         replacements = {
             "b": "\b",
             "t": "\t",
             "n": "\n",
             "f": "\f",
             "r": "\r",
-            "e": 0x1B,  # "\e" is not a thing
+            "e": "\x1b",  # "\e" is not a thing
             '"': '"',
             "\\": "\\",
         }
 
         escaped = string[0]
 
-        replacement = replacements.get(escaped, None)
+        replacement = replacements.get(escaped)
         if replacement is not None:
             return replacement, 1
 
@@ -100,8 +104,8 @@ class Tokens:
 
             return char, 1 + width
 
-        # TODO: should this raise instead?
-        warnings.warn(f"Unknown/invalid escape sequence '\\{escaped}'")
+        # TODO(elpekenin): should this raise instead?
+        warnings.warn(f"Unknown/invalid escape sequence '\\{escaped}'")  # noqa: B028  # CircuitPython has no stacklevel
         return "\\" + escaped, 1
 
 
@@ -115,11 +119,11 @@ class ParsedLine:
     """Mapping from tokens to the position(s) where they are found on the line."""
 
     def __str__(self) -> str:
-        return f"line={repr(self.line)}, tokens={repr(self.tokens)}"
+        return f"line={self.line!r}, tokens={self.tokens!r}"
 
     __repr__ = __str__
 
-    def __init__(self, line: str):
+    def __init__(self, line: str) -> None:
         self.line = ""
         self.tokens = {t: [] for t in Tokens.ALL}
 
@@ -137,6 +141,10 @@ class ParsedLine:
             # and we dont want to do it twice
             token, string, offset = Parser.string(stripped[i:], keep_escape=keep_escape)
             if string:
+                if token is None:
+                    msg = "This should be unreachable."
+                    raise RuntimeError(msg)
+
                 self.tokens[token].append(i)
                 self.tokens[token].append(i + offset)
 
@@ -170,10 +178,9 @@ class ParsedLine:
 
     def key_value(self) -> tuple[str, str]:
         """Get the key and value on this line (ie: split on equal sign)."""
-
-        assert len(
-            self.tokens[Tokens.EQUAL_SIGN]
-        ), "How did we end up on key_value with len(EQUAL) != 1"
+        if len(self.tokens[Tokens.EQUAL_SIGN]) != 1:
+            msg = "How did we end up on key_value with len(EQUAL) != 1."
+            raise RuntimeError(msg)
 
         split_at = self.tokens[Tokens.EQUAL_SIGN][0]
         key = self.line[:split_at].strip()
@@ -186,10 +193,15 @@ class Parser:
     """Get Python values out of strings."""
 
     @classmethod
-    def string(cls, value: str, *, keep_escape: bool = False) -> tuple[str, str, int]:
-        """
-        Find the next **quoted** string in the input,
-        return it and how much the cursor has been moved.
+    def string(
+        cls,
+        value: str,
+        *,
+        keep_escape: bool = False,
+    ) -> tuple[str | None, str, int]:
+        """Find the next **quoted** string in the input.
+
+        Returns it and how much the cursor has been moved.
 
         Eg:
         >>> string("'''hello'world'''")
@@ -199,31 +211,29 @@ class Parser:
         initially scanning the raw line, because the code to parse list will
         also parse the string, and if we really interpret it twice, code breaks.
         """
-
         quote_token = None
         string = ""
         i = 0
 
         for token in Tokens.QUOTES:
             sliced = value[i : i + len(token)]
-            if sliced == token:
-                # opening quote
-                if quote_token is None:
-                    # store the string delimiter
-                    quote_token = token
+            # opening quote
+            if sliced == token and quote_token is None:
+                # store the string delimiter
+                quote_token = token
 
-                    # the "clean" line should store single
-                    # quotes, not triple, thus append just current char
-                    string += token[0]
+                # the "clean" line should store single
+                # quotes, not triple, thus append just current char
+                string += token[0]
 
-                    # store this token
-                    i += len(token)
+                # store this token
+                i += len(token)
 
-                    break
+                break
 
         # quote token not found, just exit
         else:
-            return quote_token, string, i
+            return None, string, i
 
         length = len(value)
         while i < length:
@@ -256,22 +266,23 @@ class Parser:
 
         # if we get down here, check that we did not had not found an opening
         if quote_token is not None:
-            raise TOMLError("String was open but not closed.")
+            msg = "String was open but not closed."
+            raise TOMLError(msg)
+
+        return None, "", 0
 
     @classmethod
     def key(cls, key: str) -> list[str]:
-        """
-        Sanitize keys with quotes, giving the "path" to it.
-        """
+        """Sanitize keys with quotes, giving the "path" to it.
 
-        #         input | output
-        #         ------|-------
-        #       foo.bar | ["foo", "bar"]
-        #     "foo.bar" | ["foo.bar"]
-        # "foo.bar.baz" | ["foo.bar.baz"]
-        # "foo.bar".baz | ["foo.bar", "baz"]
-
-        parts = [None]
+                input | output
+                ------|-------
+              foo.bar | ["foo", "bar"]
+            "foo.bar" | ["foo.bar"]
+        "foo.bar.baz" | ["foo.bar.baz"]
+        "foo.bar".baz | ["foo.bar", "baz"]
+        """
+        parts: list[str | None] = [None]
         length = len(key)
 
         i = 0
@@ -288,13 +299,13 @@ class Parser:
             char = key[i]
             if char == ".":
                 parts.append(None)
-            else:
-                # do not add whitespace chars
-                if not char.isspace():
-                    # if last part is empty (None), replace it
-                    if parts[-1] is None:
-                        parts[-1] = ""
+            elif not char.isspace():
+                # if last part is empty (None), replace it
+                if parts[-1] is None:
+                    parts[-1] = ""
 
+                # we know it will not be, based on context, but MyPy is not smart enough
+                if parts[-1] is not None:
                     parts[-1] += char
 
             i += 1
@@ -303,9 +314,8 @@ class Parser:
         return [part for part in parts if part is not None]
 
     @classmethod
-    def try_int(cls, string: str) -> Optional[int]:
+    def try_int(cls, string: str) -> int | None:
         """Try and convert a string into an integer."""
-
         if string.isdigit():
             return int(string)
 
@@ -321,19 +331,19 @@ class Parser:
             }.get(string[1], None)
 
             if base is None:
-                raise TOMLError("Invalid number.")
+                msg = "Invalid number."
+                raise TOMLError(msg)
 
             return int(string, base)
 
         return None
 
     @classmethod
-    def try_float(cls, string: str) -> Optional[float]:
+    def try_float(cls, string: str) -> float | None:
         """Try and convert a string into an floating point number."""
-
         literals = {"inf": float("inf"), "nan": float("nan")}
 
-        maybe_literal = literals.get(string, None)
+        maybe_literal = literals.get(string)
         if maybe_literal is not None:
             return maybe_literal
 
@@ -343,32 +353,37 @@ class Parser:
             and string.replace(".", "0").isdigit()
         ):
             if string[0] == ".":
-                raise TOMLError("Leading point is invalid.")
+                msg = "Leading point is invalid."
+                raise TOMLError(msg)
 
             if string[-1] == ".":
-                raise TOMLError("Trailing point is invalid.")
+                msg = "Trailing point is invalid."
+                raise TOMLError(msg)
 
             return float(string)
 
         return None
 
     @classmethod
-    def try_number(cls, string: str) -> Optional[Union[int, float]]:
+    def try_number(cls, string: str) -> int | float | None:  # noqa: C901
         """Try and convert a string into a number."""
-
         # numbers with underscores
         if string[0] == "_":
-            raise TOMLError("Leading underscore is invalid.")
+            msg = "Leading underscore is invalid."
+            raise TOMLError(msg)
 
         if string[-1] == "_":
-            raise TOMLError("Trailing underscore is invalid.")
+            msg = "Trailing underscore is invalid."
+            raise TOMLError(msg)
 
         if "__" in string:
-            raise TOMLError("Double underscore is invalid.")
+            msg = "Double underscore is invalid."
+            raise TOMLError(msg)
 
         if "_" in string:
             if "._" in string or "_." in string:
-                raise TOMLError("Underscore next to point is invalid.")
+                msg = "Underscore next to point is invalid."
+                raise TOMLError(msg)
 
             maybe_number = cls.try_number(string.replace("_", ""))
             if maybe_number is not None:
@@ -377,15 +392,17 @@ class Parser:
         # positive/negative sign
         if string[0] in ("+", "-"):
             if string[0] == string[1]:
-                raise TOMLError("Double sign is invalid.")
+                msg = "Double sign is invalid."
+                raise TOMLError(msg)
 
             if string[1:3] in ("0b", "0o", "0x"):
-                raise TOMLError("Sign + specifier is invalid.")
+                msg = "Sign and base specifier is invalid."
+                raise TOMLError(msg)
 
             maybe_number = cls.try_number(string[1:])
             if maybe_number is not None:
                 multiplier = -1 if string[0] == "-" else 1
-                return multiplier * cls.try_number(string[1:])
+                return multiplier * maybe_number
 
         maybe_number = cls.try_int(string)
         if maybe_number is not None:
@@ -398,24 +415,21 @@ class Parser:
         return None
 
     @classmethod
-    def try_bool(cls, string: str) -> Optional[bool]:
+    def try_bool(cls, string: str) -> bool | None:
         """Try and parse a literal value."""
-
         literals = {
             "true": True,
             "false": False,
         }
 
-        return literals.get(string, None)
+        return literals.get(string)
 
     @classmethod
-    def value(cls, string: str, line_info: Optional[ParsedLine] = None) -> Any:
-        """
-        (Try) Convert a string into a Python value.
+    def value(cls, string: str, line_info: ParsedLine | None = None) -> object:
+        """(Try) Convert a string into a Python value.
 
         Note: line_info is only used when parsing lists
         """
-
         # quoted string, has to be first, to prevent casting it
         if Syntax.is_quoted(string):
             # remove quotes
@@ -432,27 +446,26 @@ class Parser:
         # array
         if Syntax.is_in_brackets(string):
             if line_info is None:
-                raise TOMLError("How did we end on array parsing without line info?")
+                msg = "Array parsing without line info (WTF)."
+                raise TOMLError(msg)
 
             start = line_info.tokens[Tokens.OPENING_BRACKET][0]
             value, _ = cls.list(line_info.line, start + 1)
             return value
 
         # couldn't parse, raise Exception
-        raise TOMLError(
-            f"Couldn't parse value: '{string}' (Hint, remember to wrap strings in quotes)"
+        msg = (
+            f"Couldn't parse value: '{string}'"
+            " (Hint: remember to wrap strings in quotes)."
         )
+        raise TOMLError(msg)
 
     @classmethod
-    def list(cls, line: str, start: int) -> tuple[list[Any], int]:
-        """
-        Helper to parse a list.
-        Returns parsed list + where next element starts
-        """
-
+    def list(cls, line: str, start: int) -> tuple[list[object], int]:
+        """Parse a list. Returns parsed list and where next element starts."""
         i = start
         collected = ""
-        elements = []
+        elements: list[object] = []
         parsed_since_last_comma = False
 
         while i < len(line):
@@ -489,7 +502,8 @@ class Parser:
                 if stripped:
                     elements.append(cls.value(stripped))
                 elif not parsed_since_last_comma:
-                    raise TOMLError("Malformed array, check out your commas.")
+                    msg = "Malformed array, check out your commas."
+                    raise TOMLError(msg)
 
                 i += 1
                 collected = ""
@@ -505,18 +519,16 @@ class Parser:
 
     @classmethod
     def toml(cls, raw_file: str) -> Dotty:
-        """
-        Parse a whole TOML string.
-        """
-
-        table_name = []
+        """Parse a whole TOML string."""
+        table_name: list[str] = []
         data = Dotty()
 
         for raw_line in raw_file.replace("\r\n", "\n").split("\n"):
             #             null    lf     us      del     bs
-            for char in ("\x00", "\r", "\x1F", "\x7F", "\x08"):
+            for char in ("\x00", "\r", "\x1f", "\x7f", "\x08"):
                 if char in raw_line:
-                    raise TOMLError(f"Invalid control sequence {repr(char)} found.")
+                    msg = f"Invalid control sequence {char!r} found."
+                    raise TOMLError(msg)
 
             parsed_line = ParsedLine(raw_line)
 
@@ -525,9 +537,6 @@ class Parser:
                 continue
 
             Syntax.check_or_raise(parsed_line)
-
-            # at this point, line should have content and correct syntax, code can be dumb(ish)
-            # we can't strip or anything like that tho, indexes would be broken
 
             # equal sign => assignment expresion
             if Syntax.is_assignment(parsed_line):
@@ -556,27 +565,30 @@ class Syntax:
     """Tiny helpers for syntax."""
 
     @staticmethod
-    def check_or_raise(parsed: ParsedLine) -> Optional[str]:
+    def check_or_raise(parsed: ParsedLine) -> None:
         """Run some checks."""
-
         is_assignment = Syntax.is_assignment(parsed)
         is_table_setter = Syntax.is_in_brackets(parsed.line)
 
         if not is_assignment and not is_table_setter:
-            raise TOMLError("Line has to contain either an assignment or table setter.")
+            msg = "Line has to contain either an assignment or table setter."
+            raise TOMLError(msg)
 
         if is_assignment:
             if is_table_setter:
-                raise TOMLError("Line cant be an assignment and table setter.")
+                msg = "Line cant be an assignment and table setter."
+                raise TOMLError(msg)
 
             equal_sign = parsed.tokens[Tokens.EQUAL_SIGN][0]
             if is_assignment and not len(parsed.line) > equal_sign + 1:
-                raise TOMLError("Invalid assignment, nothing after equal sign.")
+                msg = "Invalid assignment, nothing after equal sign."
+                raise TOMLError(msg)
 
         opening = parsed.tokens[Tokens.OPENING_BRACKET]
         closing = parsed.tokens[Tokens.CLOSING_BRACKET]
         if len(opening) != len(closing):
-            raise TOMLError("Mismatched brackets.")
+            msg = "Mismatched brackets."
+            raise TOMLError(msg)
 
     @staticmethod
     def is_quoted(value: str) -> bool:
@@ -604,38 +616,39 @@ def loads(__str: str) -> Dotty:
     return Parser.toml(__str)
 
 
-def load(__file: "File") -> Dotty:
+def load(__file: TextIO) -> Dotty:
     """Parse TOML from a file-like."""
     return loads(__file.read())
 
 
 def dumps(__data: Dotty | dict) -> str:
     """Write a (dotty) dict as TOML into a string."""
-
     if not isinstance(__data, (Dotty, dict)):
-        raise TOMLError("dumping is only implemented for dict-like objects.")
+        msg = "dumping is only implemented for dict-like objects."
+        raise TOMLError(msg)
 
     # enclose on a dict, to easily find the "tables" on it
     if isinstance(__data, Dotty):
         __data = __data.data
 
-    def order(key_value):
-        """Custom function to dump basic keys before nested tables."""
-
+    def order(key_value: tuple[Sized, object]) -> int:
+        """Dump basic keys before nested tables."""
         key, value = key_value
         return 1000 if isinstance(value, dict) else len(key)
 
     def dump_table(buffer: StringIO, table: dict, key_parts: list[str]) -> StringIO:
-        """Helper to iterate the tree. Returns the buffer for convenience."""
-
+        """Iterate the tree, writing it, returns the buffer for convenience."""
         for key, value in sorted(table.items(), key=order):
-            if "." in key or key == "":
+            key_repr = (
+                repr(key)
                 # quote it, for valid value
-                key = repr(key)
+                if "." in key or key == ""
+                else key
+            )
 
             if isinstance(value, dict):
                 # update global key
-                key_parts.append(key)
+                key_parts.append(key_repr)
 
                 # write table header
                 table_name = ".".join(key_parts)
@@ -650,11 +663,9 @@ def dumps(__data: Dotty | dict) -> str:
                 key_parts.pop()
 
             else:
-                if isinstance(value, str):
-                    # quote it, for valid value
-                    value = repr(value)
+                value_repr = repr(value) if isinstance(value, str) else value
 
-                buffer.write(f"{key} = {value}\n")
+                buffer.write(f"{key_repr} = {value_repr}\n")
 
         return buffer
 
@@ -662,15 +673,6 @@ def dumps(__data: Dotty | dict) -> str:
     return dump_table(StringIO(), __data, []).getvalue()
 
 
-def dump(__data: Dotty | dict, __file: "File"):
+def dump(__data: Dotty | dict, __file: TextIO) -> None:
     """Write a (dotty) dict as TOML into a file."""
     __file.write(dumps(__data))
-
-
-__all__ = [
-    "TOMLError",
-    "loads",
-    "load",
-    "dumps",
-    "dump",
-]

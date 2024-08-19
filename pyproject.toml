@@ -43,3 +43,9 @@ packages = ["toml"]
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 optional-dependencies = {optional = {file = ["optional_requirements.txt"]}}
+
+[tool.ruff.lint]
+select = ["ALL"]
+
+[tool.ruff.extend-per-file-ignores]
+"tests.py" = ["PT"]

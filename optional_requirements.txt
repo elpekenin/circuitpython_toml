@@ -1,3 +1,8 @@
-# SPDX-FileCopyrightText: 2022 Alec Delaney, for Adafruit Industries
+# SPDX-FileCopyrightText: 2022 Alec Delaney, written for Adafruit Industries
+# SPDX-FileCopyrightText: Copyright (c) 2024 Pablo Martinez
 #
-# SPDX-License-Identifier: Unlicense
+# SPDX-License-Identifier: MIT
+
+mypy
+pre-commit
+ruff
