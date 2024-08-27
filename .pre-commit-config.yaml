@@ -4,18 +4,18 @@
 
 repos:
   - repo: https://github.com/fsfe/reuse-tool
-    rev: v1.1.2
+    rev: v4.0.3
     hooks:
       - id: reuse
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v4.6.0
     hooks:
       - id: check-yaml
       - id: end-of-file-fixer
       - id: trailing-whitespace
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
-    rev: v0.5.5
+    rev: v0.6.2
     hooks:
       # Run the linter.
       - id: ruff
@@ -24,6 +24,6 @@ repos:
       # Run the formatter.
       - id: ruff-format
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.0
+    rev: v1.11.2
     hooks:
     - id: mypy
