@@ -667,7 +667,7 @@ def dumps(__data: Dotty | dict) -> str:
 
             else:
                 if isinstance(value, str):
-                    value = repr(value)
+                    value = repr(value).replace("'", '"')
                 elif isinstance(value, bool):
                     value = repr(value).lower()
 
