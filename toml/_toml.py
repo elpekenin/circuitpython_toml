@@ -667,9 +667,9 @@ def dumps(__data: Dotty | dict) -> str:
 
             else:
                 if isinstance(value, str):
-                    value = repr(value).replace("'", '"')
+                    value = f'"{value}"'
                 elif isinstance(value, bool):
-                    value = repr(value).lower()
+                    value = "true" if value else "false"
 
                 buffer.write(f"{key_repr} = {value}\n")
 
