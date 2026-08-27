@@ -161,3 +161,6 @@ class Dotty:
         # if table is empty after that, remove it too
         if len(table) == 0 and parent_table:
             parent_table.pop(keys[-1])
+
+    def __hash__(self) -> int:
+        return hash(self.data)
