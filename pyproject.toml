@@ -46,6 +46,10 @@ optional-dependencies = {optional = {file = ["optional_requirements.txt"]}}
 
 [tool.ruff.lint]
 select = ["ALL"]
+ignore = [
+    "PYI063", # CircuitPython does not support PEP484
+    "CPY001", # don't want to add copyright headers
+]
 
-[tool.ruff.extend-per-file-ignores]
+[tool.ruff.lint.extend-per-file-ignores]
 "tests.py" = ["PT"]

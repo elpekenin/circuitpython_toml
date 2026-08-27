@@ -330,7 +330,7 @@ class Parser:
                 "b": 2,
                 "o": 8,
                 "x": 16,
-            }.get(string[1], None)
+            }.get(string[1])
 
             if base is None:
                 msg = "Invalid number."

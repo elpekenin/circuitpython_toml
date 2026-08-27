@@ -12,8 +12,8 @@ from ._toml import TOMLError, dump, dumps, load, loads
 
 __all__ = [
     "TOMLError",
-    "loads",
-    "load",
-    "dumps",
     "dump",
+    "dumps",
+    "load",
+    "loads",
 ]
