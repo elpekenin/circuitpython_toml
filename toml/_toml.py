@@ -666,7 +666,12 @@ def dumps(__data: Dotty | dict) -> str:
                 key_parts.pop()
 
             else:
-                value_repr = repr(value) if isinstance(value, str) else value
+                if isinstance(value, str):
+                    value_repr = f'"{value}"'
+                elif isinstance(value, bool):
+                    value_repr = "true" if value else "false"
+                else:
+                    value_repr = value
 
                 buffer.write(f"{key_repr} = {value_repr}\n")
 
