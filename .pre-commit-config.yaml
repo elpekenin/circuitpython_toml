@@ -2,6 +2,9 @@
 #
 # SPDX-License-Identifier: Unlicense
 
+ci:
+  autoupdate_schedule: monthly
+
 repos:
   - repo: https://github.com/fsfe/reuse-tool
     rev: v6.2.0
